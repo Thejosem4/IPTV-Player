@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Neural Dashboard 🧠</title>
+
+    <!-- 🛡️ Filtro de errores de extensiones del browser (debe ir PRIMERO) -->
+    <script>
+    (function() {
+        // Patrones de errores conocidos de extensiones — no son del dashboard
+        const EXT_PATTERNS = [
+            'message channel closed',
+            'listener indicated an asynchronous response',
+            'share-modal',
+            'content-script',
+            'userscript',
+            'linkvertise',
+            'UNSUPPORTED_OS',
+            'chrome-extension://',
+            'moz-extension://'
+        ];
+
+        function isExtensionError(msg) {
+            const s = String(msg || '').toLowerCase();
+            return EXT_PATTERNS.some(p => s.includes(p.toLowerCase()));
+        }
+
+        // Interceptar errores síncronos de extensiones
+        const _onerror = window.onerror;
+        window.onerror = function(msg, src, line, col, err) {
+            if (isExtensionError(msg) || isExtensionError(src)) return true; // suprimir
+            return _onerror ? _onerror.call(this, msg, src, line, col, err) : false;
+        };
+
+        // Interceptar promesas rechazadas de extensiones (el "message channel" error)
+        window.addEventListener('unhandledrejection', function(e) {
+            if (isExtensionError(e.reason?.message) || isExtensionError(e.reason)) {
+                e.preventDefault(); // suprimir — es ruido de extensiones, no del dashboard
+            }
+        }, true);
+    })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+            --success: #22c55e;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+        .stat-label {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            background: var(--success);
+            color: white;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        th { color: #94a3b8; font-size: 0.75rem; }
+        .neural-node {
+            width: 10px;
+            height: 10px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>IPTV Neural Dashboard <span class="neural-node"></span></h1>
+        <p>Optimizador de Red por Aprendizaje Profundo v1.0</p>
+    </div>
+
+    <div class="grid">
+        <!-- Estadísticas Principales -->
+        <div class="card">
+            <div class="stat-label">Recuerdos Permanentes (SQLite)</div>
+            <div id="exp-count" class="stat-value">0</div>
+            <div id="ai-status" class="status-badge">Modelo Activo</div>
+        </div>
+
+        <div class="card">
+            <div class="stat-label">Complejidad Cerebral</div>
+            <div id="ai-complexity" class="stat-value">Nivel 2</div>
+            <div id="brain-structure" style="font-size: 0.75rem; color: #94a3b8;">Arquitectura: [32, 24, 16, 8]</div>
+        </div>
+
+        <div class="card">
+            <div class="stat-label">Error de Predicción</div>
+            <div id="ai-error" class="stat-value">0.000</div>
+            <div style="font-size: 0.75rem; color: #94a3b8;">Menor es mejor (objetivo < 0.1)</div>
+        </div>
+
+        <div class="card">
+            <div class="stat-label">Carga del Sistema (CPU)</div>
+            <div id="cpu-load" class="stat-value">0%</div>
+            <canvas id="cpuChart" height="100"></canvas>
+        </div>
+
+        <div class="card" style="background: linear-gradient(145deg, #1e293b, #0f172a); border-color: var(--accent);">
+            <div class="stat-label" style="color: var(--accent);">IA Intervenciones ABR</div>
+            <div id="abr-saves" class="stat-value">0</div>
+            <div style="font-size: 0.75rem; color: #94a3b8;">Decisiones de reducción de calidad (Throttle)</div>
+        </div>
+
+        <div class="card" style="background: linear-gradient(145deg, #1e293b, #064e3b); border-color: var(--success);">
+            <div class="stat-label" style="color: var(--success);">Ahorro Reescalado CPU</div>
+            <div id="cpu-saves" class="stat-value">0</div>
+            <div style="font-size: 0.75rem; color: #94a3b8;">Transcodificación local evitada (`-c:v copy`)</div>
+        </div>
+
+        <!-- Tabla de Eventos Recientes -->
+        <div class="card" style="grid-column: span 2;">
+            <div class="stat-label">Razonamiento de la IA por Canal</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Canal</th>
+                        <th>Tamaño (MB)</th>
+                        <th>Velocidad (KB/s)</th>
+                        <th>Éxito</th>
+                        <th>Carga CPU</th>
+                    </tr>
+                </thead>
+                <tbody id="events-table">
+                    <!-- Dinámico -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:5000/api";
+
+        async function updateStats() {
+            try {
+                const response = await fetch(`${API_BASE}/ai-stats`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+
+                // Guards defensivos: ?? evita TypeError si el valor llega null/undefined
+                document.getElementById('exp-count').innerText = data.experience_count ?? 0;
+                document.getElementById('cpu-load').innerText = (data.cpu_usage ?? 0) + "%";
+                document.getElementById('ai-complexity').innerText = "Nivel " + (data.complexity ?? 2);
+                const layers = Array.isArray(data.brain_layers) ? data.brain_layers : [32, 24, 16, 8];
+                document.getElementById('brain-structure').innerText = "Arquitectura: [" + layers.join(", ") + "]";
+                document.getElementById('ai-error').innerText = (data.avg_error ?? 0).toFixed(4);
+                
+                document.getElementById('ai-status').innerText = data.has_model ? "Red Evolucionada" : "Fase de Aprendizaje";
+                document.getElementById('ai-status').style.background = data.has_model ? "#22c55e" : "#f59e0b";
+
+                // Métricas ABR
+                if (data.abr_metrics) {
+                    document.getElementById('abr-saves').innerText = data.abr_metrics.abr_interventions || 0;
+                    document.getElementById('cpu-saves').innerText = data.abr_metrics.cpu_saved_events || 0;
+                }
+
+                // Actualizar tabla con Razonamiento
+                const table = document.getElementById('events-table');
+                table.innerHTML = '';
+                (data.recent_events ?? []).forEach(ev => {
+                    const input = ev.input ?? [0, 0, 0];
+                    const row = `<tr>
+                        <td style="color: #38bdf8; font-weight: 500;">${ev.name ?? 'VOD'}</td>
+                        <td>${(input[0] ?? 0).toFixed(1)} MB</td>
+                        <td>${(ev.speed ?? 0).toFixed(0)}</td>
+                        <td>${ev.success ? '✅' : '❌'}</td>
+                        <td>${(input[2] ?? 0).toFixed(0)}%</td>
+                    </tr>`;
+                    table.innerHTML += row;
+                });
+
+                // Actualizar gráfico CPU con datos reales
+                if (cpuChart.data.datasets[0].data.length >= 20) {
+                    cpuChart.data.datasets[0].data.shift();
+                }
+                cpuChart.data.datasets[0].data.push(data.cpu_usage ?? 0);
+                cpuChart.update('none');
+
+            } catch (err) {
+                console.error("Error conectando con el servidor IPTV:", err);
+                // Badge visible de error (antes silenciaba el fallo completamente)
+                document.getElementById('ai-status').innerText = "Sin conexión";
+                document.getElementById('ai-status').style.background = "#ef4444";
+            }
+        }
+
+        // Gráfico de CPU simple
+        const ctx = document.getElementById('cpuChart').getContext('2d');
+        const cpuChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''),
+                datasets: [{
+                    label: 'Uso CPU %',
+                    data: [],
+                    borderColor: '#38bdf8',
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { min: 0, max: 100, display: false }, x: { display: false } },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // Loop de actualización
+        setInterval(() => {
+            updateStats();
+            // Simular gráfico por ahora o integrar con CPU real
+        }, 5000);
+
+        updateStats();
+    </script>
+</body>
+</html>

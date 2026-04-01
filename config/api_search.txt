@@ -1,0 +1,6 @@
+727: if any(x in msg for x in ["/api/ai-stats", "/api/cache/list", "/api/auto-refresh", "/api/speed-log", "/api/cache/refresh-status"]):
+832: elif p.startswith("/api/cache/refresh/"):
+834: elif p == "/api/cache/refresh-status":
+847: if p.startswith("/api/cache/delete/"):
+890: """GET /api/cache/refresh/{id}  – refresca una playlist manualmente"""
+919: """GET /api/cache/refresh-status – estado de actualizaciones recientes"""

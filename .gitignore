@@ -1,0 +1,10 @@
+# IPTV-Player Git Ignore
+__pycache__/
+*.py[cod]
+.venv/
+cache/
+logs/
+.env
+config/Certificados/*.txt
+config/Certificados/*.pdf
+config/Certificados/*.PDF

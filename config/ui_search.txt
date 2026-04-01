@@ -1,0 +1,108 @@
+671: title="Eliminar todas las playlists"
+761: <!-- Auto-refresh Settings -->
+782: <span id="autoRefreshStatus" style="font-size: 12px; color: #999"
+805: id="autoRefreshToggle"
+807: saveAutoRefreshConfig({
+810: document.getElementById('autoRefreshInterval').value,
+819: id="autoRefreshInterval"
+827: saveAutoRefreshConfig({
+828: enabled: document.getElementById('autoRefreshToggle').checked,
+976: // AUTO-REFRESH: Configuración y Polling
+978: let autoRefreshConfig = { enabled: false, interval_minutes: 60 };
+979: let autoRefreshTimer = null;
+981: async function loadAutoRefreshConfig() {
+983: const r = await fetch("/api/auto-refresh/settings");
+984: autoRefreshConfig = await r.json();
+985: updateAutoRefreshUI();
+991: async function saveAutoRefreshConfig(cfg) {
+993: await fetch("/api/auto-refresh/settings", {
+998: autoRefreshConfig = { ...autoRefreshConfig, ...cfg };
+999: updateAutoRefreshUI();
+1000: restartAutoRefreshTimer();
+1001: console.log("⚙️ Auto-refresh configurado:", autoRefreshConfig);
+1007: function updateAutoRefreshUI() {
+1008: const toggle = document.getElementById("autoRefreshToggle");
+1009: const interval = document.getElementById("autoRefreshInterval");
+1010: const statusEl = document.getElementById("autoRefreshStatus");
+1011: if (toggle) toggle.checked = autoRefreshConfig.enabled;
+1012: if (interval) interval.value = autoRefreshConfig.interval_minutes;
+1014: statusEl.textContent = autoRefreshConfig.enabled
+1015: ? `🔄 Activo – cada ${autoRefreshConfig.interval_minutes} min`
+1018: statusEl.style.color = autoRefreshConfig.enabled ? "#4caf50" : "#999";
+1021: function restartAutoRefreshTimer() {
+1022: if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+1023: if (!autoRefreshConfig.enabled) return;
+1025: const ms = autoRefreshConfig.interval_minutes * 60 * 1000;
+1026: autoRefreshTimer = setInterval(
+1028: console.log("🔄 Auto-refresh: comprobando playlists...");
+1032: if (age >= autoRefreshConfig.interval_minutes) {
+1034: await triggerRefresh(entry.id);
+1042: async function triggerRefresh(playlistId) {
+1044: const r = await fetch(`/api/cache/refresh/${playlistId}`);
+1046: if (d.status === "refreshing") {
+1047: console.log(`✅ Refresh iniciado: ${playlistId}`);
+1049: setTimeout(() => checkRefreshStatus(playlistId), 15000);
+1052: console.warn("⚠️ Error al disparar refresh:", e);
+1056: async function checkRefreshStatus(playlistId) {
+1058: const r = await fetch("/api/cache/refresh-status");
+1064: console.log(`✅ Refresh completado: ${s.total} canales`);
+1065: showRefreshNotification(playlistId, s.total);
+1068: console.warn(`❌ Refresh falló: ${s.error}`);
+1075: function showRefreshNotification(playlistId, total) {
+1087: document.body.removeChild(banner);
+1094: if (banner.parentNode) document.body.removeChild(banner);
+1098: async function manualRefreshPlaylist(playlistId, name) {
+1099: const btn = document.getElementById(`refreshBtn_${playlistId}`);
+1106: await triggerRefresh(playlistId);
+1108: // Polling inteligente: continúa mientras status === 'refreshing'
+1117: const r = await fetch("/api/cache/refresh-status");
+1123: if (s.status === "refreshing") {
+1124: // Todavía descargando — actualizar botón con tiempo transcurrido
+1135: btn.textContent = "🔄 Actualizar";
+1147: showRefreshNotification(playlistId, s.total);
+1155: btn.textContent = "🔄 Actualizar";
+1165: btn.textContent = "🔄 Actualizar";
+1273: // Actualizar UI del gestor
+1300: async function deletePlaylistCache(playlistId) {
+1302: await fetch(`/api/cache/delete/${playlistId}`);
+1306: console.warn("⚠️ Error al eliminar caché:", e);
+1313: "¿Eliminar TODAS las playlists guardadas del disco?\n\nEsta acción no se puede deshacer.",
+1471: id="refreshBtn_${item.id}"
+1472: onclick="manualRefreshPlaylist('${item.id}', '${item.name.replace(/'/g, "\\'")}')"
+1476: 🔄 Actualizar
+1479: onclick="deletePlaylistCache('${item.id}')"
+1482: title="Eliminar del caché">
+1483: 🗑️ Borrar
+1506: // Actualizar URL en el input
+1561: // Remover atributos M3U embebidos en el nombre
+1568: // Remover cualquier tag HTML completo
+1571: // Remover comillas sobrantes que quedan
+1959: // Actualizar progreso
+2050: console.log("✅ Grupos se actualizarán dinámicamente por pestaña");
+2112: .forEach((btn) => btn.classList.remove("active"));
+2118: // Actualizar grupos según la pestaña actual
+2209: // Remover indicador si ya no hay más
+2211: if (indicator) indicator.remove();
+2218: // Remover listener anterior si existe
+2220: panel.removeEventListener("scroll", panel._scrollListener);
+2384: .forEach((el) => el.classList.remove("watching"));
+2423: loadingIndicator.remove();
+2494: if (indicator) indicator.remove();
+2553: item.classList.remove("active");
+2927: wrapper.removeEventListener("mousemove", showAndScheduleProxy);
+2928: wrapper.removeEventListener("touchstart", showAndScheduleProxy);
+2941: // Actualizar el texto del cinBtn si lo encontramos
+3152: // Actualizar seekbar si el wrapper ya está montado
+3166: // Actualizar info panel
+3247: // Cuando HLS.js conoce la duración, actualizar seekbar
+3296: // Función para actualizar la duración en el seekbar cuando llega tarde
+3376: // Actualizar posición del seek mientras el video avanza
+3607: wrapper.removeEventListener("mousemove", resetHideTimer);
+3608: wrapper.removeEventListener("touchstart", resetHideTimer);
+3625: // Actualizar botón fs cuando se sale desde ESC
+4221: // Actualizar botón
+4297: document.body.removeChild(a);
+4427: // Cargar configuración de auto-refresh
+4428: await loadAutoRefreshConfig();
+4429: restartAutoRefreshTimer();
+4431: // Actualizar gestor de caché al iniciar
