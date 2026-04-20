@@ -60,10 +60,16 @@ try:
     from iptv_ai_core import ai_optimizer
     HAS_AI = True
     import logging
+    import logging.handlers
     os.makedirs(os.path.join(os.path.dirname(__file__), '..', 'logs'), exist_ok=True)
     # Re-configurar logging para no interferir con el stdout original
     ai_logger = logging.getLogger("IPTV_AI")
-    ai_handler = logging.FileHandler(os.path.join(os.path.join(os.path.dirname(__file__), '..', 'logs'), 'ai_decisions.log'), encoding="utf-8")
+    ai_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(os.path.join(os.path.dirname(__file__), '..', 'logs'), 'ai_decisions.log'),
+        encoding="utf-8",
+        maxBytes=10_000_000,  # 10 MB
+        backupCount=5
+    )
     ai_handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
     ai_logger.addHandler(ai_handler)
     ai_logger.setLevel(logging.INFO)

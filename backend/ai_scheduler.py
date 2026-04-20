@@ -33,6 +33,7 @@ import threading
 import datetime
 import re
 import logging
+import logging.handlers
 import urllib.request
 import urllib.parse
 import gzip
@@ -55,7 +56,7 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 # Configurar logger propio
 sched_logger = logging.getLogger("AI_SCHEDULER")
-handler = logging.FileHandler(SCHEDULER_LOG, encoding="utf-8")
+handler = logging.handlers.RotatingFileHandler(SCHEDULER_LOG, encoding="utf-8", maxBytes=10_000_000, backupCount=5)
 handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
 sched_logger.addHandler(handler)
 sched_logger.setLevel(logging.INFO)
