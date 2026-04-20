@@ -340,8 +340,15 @@ def cache_json_path(playlist_id):
 def save_cache_gz(playlist_id, data):
     """Guarda JSON comprimido con gzip (nivel 6 = buen balance)"""
     path = cache_gz_path(playlist_id)
-    with gzip.open(path, "wt", encoding="utf-8", compresslevel=6) as f:
-        json.dump(data, f, ensure_ascii=False)
+    tmp_path = path + ".tmp"
+    try:
+        with gzip.open(tmp_path, "wt", encoding="utf-8", compresslevel=6) as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise e
     size_kb = os.path.getsize(path) / 1024
     print(f"   💾 Guardado: {path} ({size_kb:.1f} KB comprimido)")
 
@@ -352,8 +359,21 @@ def load_cache_gz(playlist_id):
     json_path = cache_json_path(playlist_id)
 
     if os.path.exists(gz_path):
-        with gzip.open(gz_path, "rt", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with gzip.open(gz_path, "rt", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"   ⚠️ Caché corrupto ({playlist_id}), intentando fallback legacy...")
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    save_cache_gz(playlist_id, data)
+                    os.remove(json_path)
+                    return data
+                except Exception:
+                    pass
+            return None
     elif os.path.exists(json_path):
         # Migrar automáticamente a .gz
         print(f"   🔄 Migrando caché legado a gzip: {playlist_id}")
@@ -423,8 +443,11 @@ def download_m3u(url):
     """
     Descarga un M3U con Accept-Encoding: gzip.
     Descomprime automáticamente si el servidor lo soporta.
+    Lee en chunks con timeout total de 3 min y progreso cada 5MB.
     Retorna el texto del M3U y metadata de velocidad.
     """
+    import time as _time
+
     req = urllib.request.Request(url)
     req.add_header(
         "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -432,22 +455,38 @@ def download_m3u(url):
     req.add_header("Accept-Encoding", "gzip, deflate")
     req.add_header("Connection", "keep-alive")
 
-    t0 = time.time()
-    
-    timeout_m3u = 120
-    if HAS_AI:
-        try:
-            from iptv_ai_core import ai_optimizer
-            cfg = ai_optimizer.predict_optimal_config(url, 5.0) # Playlists pueden ser grandes (5MB est)
-            # Si la IA detecta asfixia de red o alta CPU, damos mucho mas tiempo al socket
-            buffer_k = cfg.get("buffer_kb", 2500)
-            timeout_m3u = 120 if buffer_k > 1500 else 300 
-            print(f"   🧠 IA M3U Downloader: Ajustando timeout a {timeout_m3u}s basado en perfil de red.")
-        except: pass
+    CHUNK_SIZE = 512 * 1024      # 512 KB por chunk
+    MAX_TOTAL_SECONDS = 180      # 3 minutos máximo total
+    MAX_TOTAL_BYTES = 80_000_000 # 80 MB máximo
 
-    with urllib.request.urlopen(req, timeout=timeout_m3u) as response:
+    t0 = time.time()
+
+    with urllib.request.urlopen(req, timeout=30) as response:
         encoding = response.headers.get("Content-Encoding", "").lower()
-        raw_bytes = response.read()
+        chunks = []
+        total_bytes = 0
+        t_start = _time.time()
+
+        while True:
+            if _time.time() - t_start > MAX_TOTAL_SECONDS:
+                raise TimeoutError(f"Descarga M3U superó {MAX_TOTAL_SECONDS}s — servidor muy lento")
+
+            chunk = response.read(CHUNK_SIZE)
+            if not chunk:
+                break
+
+            chunks.append(chunk)
+            total_bytes += len(chunk)
+
+            if total_bytes % (5 * 1024 * 1024) < CHUNK_SIZE:
+                elapsed = _time.time() - t_start
+                speed = (total_bytes / 1024) / max(elapsed, 0.1)
+                print(f"   📥 Descargando: {total_bytes/1024/1024:.1f} MB @ {speed:.0f} KB/s")
+
+            if total_bytes > MAX_TOTAL_BYTES:
+                raise ValueError(f"M3U supera {MAX_TOTAL_BYTES//1024//1024}MB — abortando")
+
+        raw_bytes = b"".join(chunks)
     elapsed = time.time() - t0
 
     compressed_size = len(raw_bytes)
@@ -3061,6 +3100,9 @@ def run_server(port=5000):
 
     ensure_cache_dir()
 
+    # Cambiar al directorio frontend para servir archivos estáticos
+    import os as _os
+    _os.chdir(_os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "frontend")))
     server = ThreadedHTTPServer(("", port), IPTVHandler)
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 

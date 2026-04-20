@@ -479,10 +479,14 @@ conn.commit()
 
 existing = cursor.execute("SELECT COUNT(*) FROM experiences").fetchone()[0]
 print(f"\n  📊 Experiencias previas en BD: {existing:,}")
-print(f"  🗑️  Limpiando datos anteriores para re-entrenamiento limpio...")
-cursor.execute("DELETE FROM experiences")
-conn.commit()
-print(f"  ✅ BD limpia. Generando 30.000 experiencias avanzadas...\n")
+if existing > 5000:
+    print(f"  ⚠️  BD tiene {existing:,} experiencias (posiblemente de Kaggle). NO se borra.")
+    print(f"  ℹ️  Para forzar reset, borra manualmente el archivo: {DB_PATH}")
+else:
+    print(f"  🗑️  Limpiando datos anteriores para re-entrenamiento limpio...")
+    cursor.execute("DELETE FROM experiences")
+    conn.commit()
+    print(f"  ✅ BD limpia. Generando experiencias sintéticas...")
 
 # ══════════════════════════════════════════════════
 # H. GENERACIÓN POR LOTES
@@ -546,11 +550,19 @@ try:
     from iptv_ai_core import ai_optimizer
     # Resetear modelo para reentrenar con arquitectura nueva y más features
     import os
-    for f in ["iptv_dynamic_brain.pkl", "iptv_scaler_x_v4.pkl", "iptv_scaler_y_v4.pkl", "brain_config.json"]:
-        path = os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), f)
-        if os.path.exists(path):
-            os.remove(path)
-    ai_optimizer.model  = None
+    # Solo resetear si no existen pkl de Kaggle o son inválidos
+    pkl_ok = all(
+        os.path.exists(os.path.join(CACHE_DIR, f))
+        for f in ["iptv_dynamic_brain.pkl", "iptv_scaler_x_v4.pkl", "iptv_scaler_y_v4.pkl"]
+    )
+    if not pkl_ok:
+        print("  🔄 No se encontraron pkl de Kaggle. Reseteando para entrenar desde cero...")
+        for f in ["iptv_dynamic_brain.pkl", "iptv_scaler_x_v4.pkl", "iptv_scaler_y_v4.pkl", "brain_config.json"]:
+            path = os.path.join(CACHE_DIR, f)
+            if os.path.exists(path): os.remove(path)
+        ai_optimizer.model = None
+    else:
+        print("  ✅ PKL de Kaggle detectados. Se usarán como base para evolve_brain().")
     ai_optimizer.experience_count = total_bd
     
     ai_optimizer.evolve_brain()

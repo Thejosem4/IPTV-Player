@@ -47,14 +47,17 @@ logging.info = ai_logger.info
 logging.error = ai_logger.error
 logging.warning = ai_logger.warning
 
-# Configuración de Rutas
-CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'cache')
+# Configuración de Rutas Dinámicas (Portabilidad v5.0)
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+CACHE_DIR = os.path.join(BASE_DIR, 'cache')
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
 DB_PATH = os.path.join(CACHE_DIR, "iptv_permanent_memory.db")
+GOLD_DB_PATH = os.path.join(CACHE_DIR, "iptv_gold_memory.db")
 MODEL_PATH = os.path.join(CACHE_DIR, "iptv_dynamic_brain.pkl")
-SCALER_PATH = os.path.join(CACHE_DIR, "iptv_scaler_v3.pkl")
 CONFIG_PATH = os.path.join(CACHE_DIR, "brain_config.json")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 
 class IPTVEvolutionaryBrain:
     def __init__(self):
@@ -67,6 +70,9 @@ class IPTVEvolutionaryBrain:
         self.error_history = []
         self.experience_count = self.get_total_experiences()
         self._last_retrain_count = 0
+        # Auto-importar memoria Kaggle si la BD local está vacía o escasa
+        if self.experience_count < 1000:
+            self.experience_count = self.import_gold_memory()
         self.start_auto_retraining()
 
     def init_db(self):
@@ -92,9 +98,17 @@ class IPTVEvolutionaryBrain:
                 target_prefetch INTEGER,
                 actual_speed REAL,
                 success INTEGER,
+                codec TEXT,
+                playback_success INTEGER DEFAULT 1,
                 is_critical INTEGER
             )
         ''')
+        # Migración: añadir columnas si no existen (v6.0)
+        cursor.execute("PRAGMA table_info(experiences)")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "codec" not in cols: cursor.execute("ALTER TABLE experiences ADD COLUMN codec TEXT")
+        if "playback_success" not in cols: cursor.execute("ALTER TABLE experiences ADD COLUMN playback_success INTEGER DEFAULT 1")
+        conn.commit()
         # Migración simple: verificar si existen las nuevas columnas
         cursor.execute("PRAGMA table_info(experiences)")
         columns = [column[1] for column in cursor.fetchall()]
@@ -104,6 +118,61 @@ class IPTVEvolutionaryBrain:
             cursor.execute("ALTER TABLE experiences ADD COLUMN full_url TEXT")
         conn.commit()
         conn.close()
+
+    def import_gold_memory(self, kaggle_db_path: str = None):
+        """
+        Importa la memoria de Kaggle (iptv_gold_memory.db / tabla gold_experiences)
+        a la BD local (iptv_permanent_memory.db / tabla experiences).
+        Si kaggle_db_path es None, usa GOLD_DB_PATH definido en las constantes.
+        Solo importa si la BD local tiene menos de 1000 experiencias para no re-importar.
+        """
+        import random as _rng
+        src_path = kaggle_db_path or GOLD_DB_PATH
+        if not os.path.exists(src_path):
+            print(f"⚠️ IA: No se encontró BD de Kaggle en {src_path}")
+            return 0
+
+        local_count = self.get_total_experiences()
+        if local_count >= 1000:
+            print(f"ℹ️ IA: BD local ya tiene {local_count:,} experiencias. Importación omitida.")
+            return local_count
+
+        print(f"📥 IA: Importando memoria Kaggle desde {src_path}...")
+        src  = sqlite3.connect(src_path)
+        dst  = sqlite3.connect(DB_PATH)
+        now  = time.time()
+
+        rows = src.execute("""
+            SELECT cpu, ram, latency, actual_speed, size_mb,
+                   target_num_conn, target_buffer, target_delay, target_prefetch
+            FROM gold_experiences
+        """).fetchall()
+        src.close()
+
+        imported = 0
+        for r in rows:
+            cpu, ram, lat, spd, sz, conn_t, buf, delay, pref = r
+            hour    = _rng.randint(0, 23)
+            dow     = _rng.randint(0, 6)
+            success = 1 if spd > (sz * 1024 / 2.0) else 0
+            is_crit = 0 if success else 1
+            ts      = now - _rng.randint(0, 86400 * 30)
+            dst.execute("""
+                INSERT INTO experiences
+                (timestamp, url_domain, full_url, channel_name, size_mb, hour, day_of_week,
+                 cpu, ram, latency, target_num_conn, target_buffer, target_delay,
+                 target_prefetch, actual_speed, success, is_critical)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (ts, "kaggle.gold", "http://kaggle.gold/vod/0.ts",
+                  "Kaggle-Gold", sz, hour, dow, cpu, ram, lat,
+                  conn_t, buf, delay, pref, spd, success, is_crit))
+            imported += 1
+
+        dst.commit()
+        dst.close()
+        total = self.get_total_experiences()
+        print(f"✅ IA: {imported:,} experiencias Kaggle importadas. Total BD local: {total:,}")
+        return total
 
     def load_config(self):
         """Carga la configuración de la arquitectura de la red"""
@@ -141,85 +210,54 @@ class IPTVEvolutionaryBrain:
 
     def _retrain(self):
         import math
-        # Limpieza de redundancia: np y threading ya están en el global
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT size_mb, cpu, ram, latency, actual_speed
+            SELECT size_mb, cpu, ram, latency, actual_speed, is_critical
             FROM experiences
             WHERE actual_speed IS NOT NULL AND actual_speed > 0
-            ORDER BY is_critical DESC, id DESC LIMIT 8000
+            ORDER BY id DESC LIMIT 10000
         ''')
         rows = cursor.fetchall()
         conn.close()
 
-        if not rows:
-            return
+        if not rows: return
 
-        # --- GUARDIA DE MODELO ---
-        if self.model is None:
-            layers = self.config.get("layers", [256, 128, 64, 32])
-            self.model = MLPRegressor(
-                hidden_layer_sizes=layers,
-                activation='relu',
-                solver='adam',
-                max_iter=500,
-                warm_start=True
-            )
-            print(f"   ⚠️ [Cerebro] Modelo inexistente/corrupto. Re-inicializando v5...")
-
-        if not rows:
-            return
-
-        raw_X = []
-        raw_Y = []
+        raw_X, raw_Y = [], []
         for rc in rows:
-            size_mb, cpu, ram, latency, actual_speed = rc
-            ratio = (size_mb * 1024 / 2) / max(actual_speed, 1.0)
+            size_mb, cpu, ram, latency, actual_speed, is_critical = rc
+            ratio = (2500.0 / actual_speed) if actual_speed > 5 else 1.0
             
-            x_feat = [
-                math.log1p(size_mb),
-                cpu,
-                ram,
-                math.sqrt(max(0, latency)),
-                ratio,
-                (cpu * ratio) / 100.0,
-                0.5
-            ]
-            raw_X.append(x_feat)
+            # Features v5.0
+            raw_X.append([
+                math.log1p(size_mb), cpu, ram, math.sqrt(max(0, latency)),
+                ratio, (cpu * ratio) / 100.0, 0.5
+            ])
             
-            if ratio > 1.2:
-                y_feat = [2, math.log(16384), min(2.5, 0.4 * ratio), min(35, 6 * ratio)]
+            # Labels v5.0 (8 Salidas)
+            # [conn, buf, delay, pref, threads, preset, reconnect, stall]
+            if ratio > 1.2 or is_critical:
+                raw_Y.append([2, math.log(16384), 1.5, 40, 4, 0, 1, 0.9]) # Agresivo
             else:
-                y_feat = [8, math.log(2048), 0.05, 4]
-            raw_Y.append(y_feat)
+                raw_Y.append([8, math.log(2048), 0.05, 4, 2, 1, 0, 0.1])  # Eficiente
 
-        X = np.array(raw_X)
-        Y = np.array(raw_Y)
+        X, Y = np.array(raw_X), np.array(raw_Y)
 
         with self.lock:
-            # --- PROTECCIÓN ANTI-DRIFT ---
-            # Solo usamos transform() si los scalers ya fueron fitteados por el modelo v5 original.
-            # Si son nuevos StandardScaler(), fit_transform() es necesario la PRIMERA VEZ.
-            # No fittear escaladores en caliente si ya tienen datos (Evita Deriva / Drift)
-            if hasattr(self.scaler_x, 'mean_'):
-                X_scaled = self.scaler_x.transform(X)
-                Y_scaled = self.scaler_y.transform(Y)
-            else:
-                X_scaled = self.scaler_x.fit_transform(X)
-                Y_scaled = self.scaler_y.fit_transform(Y)
+            X_scaled = self.scaler_x.fit_transform(X)
+            Y_scaled = self.scaler_y.fit_transform(Y)
             
-            if hasattr(self.model, "warm_start"):
-                self.model.warm_start = True
-                self.model.max_iter = 500
+            if self.model is None:
+                self.model = MLPRegressor(hidden_layer_sizes=tuple(self.config["layers"]), warm_start=True)
             
             self.model.fit(X_scaled, Y_scaled)
+            self.config["avg_error"] = float(self.model.loss_)
+            self.save_config()
             
             joblib.dump(self.model, MODEL_PATH)
-            joblib.dump(self.scaler_x, os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), "iptv_scaler_x_v4.pkl"))
-            joblib.dump(self.scaler_y, os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), "iptv_scaler_y_v4.pkl"))
-            
-            print(f"   [Cerebro] 🧠 Auto-Retrain completado (n={len(X)})")
+            joblib.dump(self.scaler_x, os.path.join(CACHE_DIR, "iptv_scaler_x_v4.pkl"))
+            joblib.dump(self.scaler_y, os.path.join(CACHE_DIR, "iptv_scaler_y_v4.pkl"))
+            print(f"   [Cerebro] 🧠 Evolución Completada (Error: {self.config['avg_error']:.6f})")
 
     def load_scaler_x(self):
         path = os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), "iptv_scaler_x_v4.pkl")
@@ -342,16 +380,27 @@ class IPTVEvolutionaryBrain:
                 pred_scaled = self.model.predict(X_scaled)[0]
                 pred = self.scaler_y.inverse_transform([pred_scaled])[0]
                 
-                # Desempaquetar y limpiar predicción (buffer logarítmico a real)
-                c_conn, buf_log, delay, pref = pred
+                # Desempaquetar y limpiar predicción (Mapeo dinámico v5.0)
+                if len(pred) >= 8:
+                    c_conn, buf_log, delay, pref, th, pr_idx, rec, st_prob = pred
+                else:
+                    c_conn, buf_log, delay, pref = pred
+                    th, pr_idx, rec, st_prob = 2, 0, 0, 0.1 # Fallbacks seguros v4.0
                 
                 buf_real = math.exp(buf_log) if buf_log < 15 else 16384 # Protección para no desbordar
                 
                 # Limitamos num_conn drásticamente (max 4) para evitar bloqueos del proveedor IPTV
                 num_conn = int(np.clip(round(c_conn), 1, 4))
-                buffer_size = int(np.clip(round(buf_real), 128, 16384))
+                buffer_size = int(np.clip(round(buf_real), 2048, 16384))
                 retry_delay = float(np.clip(delay, 0.01, 3.0))
                 prefetch_count = int(np.clip(round(pref), 1, 40))
+
+                # Parámetros avanzados de FFmpeg/Watchdog (256 Neuronas)
+                ai_threads = int(np.clip(round(th), 1, 4))
+                ai_preset_list = ["ultrafast", "superfast", "veryfast", "faster"]
+                ai_preset = ai_preset_list[int(np.clip(round(pr_idx), 0, 3))]
+                ai_reconnect = 1 if rec > 0.5 else 0
+                ai_stall_prob = float(np.clip(st_prob, 0.0, 1.0))
                 
                 # MEMORIA PREVENTIVA: Castigo a servidores rebeldes
                 if recent_failures > 2:
@@ -374,10 +423,14 @@ class IPTVEvolutionaryBrain:
                     "num_conn": num_conn,
                     "buffer_kb": buffer_size,
                     "retry_delay": round(retry_delay, 3),
-                    "prefetch_count": prefetch_count
+                    "prefetch_count": prefetch_count,
+                    "threads": ai_threads,
+                    "preset": ai_preset,
+                    "reconnect": ai_reconnect,
+                    "stall_prob": ai_stall_prob
                 }
                 
-                reason = f"Predicción Neuronal basada en Latencia {latency:.0f}ms y Carga {sys_cpu}%"
+                reason = f"Predicción Neuronal (v5.0) basada en Latencia {latency:.0f}ms y Carga {sys_cpu}%"
                 if getattr(self, 'consecutive_errors', 0) > 2:
                     config["num_conn"] = max(2, config["num_conn"] // 2)
                     reason += " | PENALIZACIÓN errores seguidos"
@@ -409,7 +462,7 @@ class IPTVEvolutionaryBrain:
         
         # Targets ideales para el aprendizaje
         target_num_conn = 32 if is_critical else 8
-        target_buffer = 4096 if is_critical else 1024
+        target_buffer = 4096 if is_critical else 2048
         target_delay = 0.4 if is_critical else 0.05
         target_prefetch = 8 if is_critical else 3
 
@@ -491,16 +544,16 @@ class IPTVEvolutionaryBrain:
         import math
         print("🧠 IA: Iniciando fase de consolidación de memoria...")
         conn = sqlite3.connect(DB_PATH)
-        # Replay Buffer: 100 recientes + 1000 históricos aleatorios 
+        # Replay Buffer: 500 recientes + 5000 históricos aleatorios (Kaggle-scale)
         recent = conn.execute("""
             SELECT url_domain, size_mb, hour, day_of_week, cpu, ram, latency,
                    target_num_conn, target_buffer, target_delay, target_prefetch, success, actual_speed
-            FROM experiences ORDER BY id DESC LIMIT 100
+            FROM experiences ORDER BY id DESC LIMIT 500
         """).fetchall()
         critical = conn.execute("""
             SELECT url_domain, size_mb, hour, day_of_week, cpu, ram, latency,
                    target_num_conn, target_buffer, target_delay, target_prefetch, success, actual_speed
-            FROM experiences WHERE is_critical = 1 ORDER BY RANDOM() LIMIT 1000
+            FROM experiences WHERE is_critical = 1 ORDER BY RANDOM() LIMIT 5000
         """).fetchall()
         conn.close()
         
@@ -536,7 +589,7 @@ class IPTVEvolutionaryBrain:
 
                 Y.append([
                     target_conn,
-                    math.log(max(1.0, float(d[8] or 1024))), # Convertir a logarítmico para retrocompatibilidad
+                    math.log(max(2048.0, float(d[8] or 2048))), # Convertir a logarítmico para retrocompatibilidad
                     float(d[9] or 0.1),
                     float(d[10] or 4),
                 ])

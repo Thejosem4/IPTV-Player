@@ -34,7 +34,7 @@ except ImportError:
 
 # ── Configuración ────────────────────────────────────────────────────────
 CACHE_DIR      = os.path.join(os.path.dirname(__file__), '..', 'cache')
-GOLD_DB        = os.path.join(CACHE_DIR, "iptv_gold_memory.db")
+GOLD_DB        = os.path.join(CACHE_DIR, "iptv_permanent_memory.db")
 MODEL_PATH     = os.path.join(CACHE_DIR, "iptv_dynamic_brain.pkl")
 SCALER_X_PATH  = os.path.join(CACHE_DIR, "iptv_scaler_x_v4.pkl")
 SCALER_Y_PATH  = os.path.join(CACHE_DIR, "iptv_scaler_y_v4.pkl")
@@ -252,36 +252,58 @@ class GoldDB:
     def __init__(self):
         os.makedirs(CACHE_DIR, exist_ok=True)
         c = sqlite3.connect(GOLD_DB)
-        c.execute("""CREATE TABLE IF NOT EXISTS gold_experiences (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, original_id INTEGER, timestamp_analysis REAL,
-            url_domain TEXT, channel_name TEXT, size_mb REAL, hour INTEGER, day_of_week INTEGER,
-            cpu REAL, ram REAL, latency REAL, actual_speed REAL, success INTEGER, is_critical INTEGER,
-            orig_target_num_conn INTEGER, orig_target_buffer INTEGER, orig_target_delay REAL, orig_target_prefetch INTEGER,
-            target_num_conn INTEGER, target_buffer INTEGER, target_delay REAL, target_prefetch INTEGER,
-            analisis_matematico TEXT, estrategia_fluidez TEXT, llm_model TEXT, raw_response TEXT, source TEXT, error_magnitude REAL)""")
-        
-        # Migraciones v 2.0 -> 3.0 por si cambian columnas
-        try: c.execute("ALTER TABLE gold_experiences ADD COLUMN signature TEXT")
+        c.execute("""CREATE TABLE IF NOT EXISTS experiences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp REAL,
+            url_domain TEXT,
+            full_url TEXT,
+            channel_name TEXT,
+            size_mb REAL,
+            hour INTEGER,
+            day_of_week INTEGER,
+            cpu REAL,
+            ram REAL,
+            latency REAL,
+            target_num_conn INTEGER,
+            target_buffer INTEGER,
+            target_delay REAL,
+            target_prefetch INTEGER,
+            actual_speed REAL,
+            success INTEGER,
+            codec TEXT,
+            playback_success INTEGER DEFAULT 1,
+            is_critical INTEGER
+        )""")
+        # Migraciones por si la tabla ya existe con columnas antiguas
+        try: c.execute("ALTER TABLE experiences ADD COLUMN codec TEXT")
         except: pass
-        try: c.execute("ALTER TABLE gold_experiences ADD COLUMN error_magnitude REAL DEFAULT 0.0")
+        try: c.execute("ALTER TABLE experiences ADD COLUMN playback_success INTEGER DEFAULT 1")
         except: pass
         c.commit(); c.close()
 
     def save_lesson(self, rec, student, teacher, source, error_magnitude=0.0):
-        # Generar firma para consistencia de datos si iptv_ai_core la busca
-        sig = hashlib.md5(f"{int(rec['actual_speed']//500)}_{int(rec['latency']//50)}_{int(rec['cpu']//10)}".encode()).hexdigest()
-        
+        """Guarda la lección directamente en la tabla experiences que lee evolve_brain()."""
+        t = time.localtime()
+        speed = rec["actual_speed"]
+        size_mb = rec["size_mb"]
+        success = 1 if speed > (size_mb * 1024 / 2.0) else 0
+        is_crit = 0 if success else 1
         c = sqlite3.connect(GOLD_DB)
-        c.execute("""INSERT INTO gold_experiences (
-            original_id, timestamp_analysis, url_domain, channel_name, size_mb, hour, day_of_week,
-            cpu, ram, latency, actual_speed, success, is_critical, signature, error_magnitude,
-            orig_target_num_conn, orig_target_buffer, orig_target_delay, orig_target_prefetch,
-            target_num_conn, target_buffer, target_delay, target_prefetch, source
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
-            rec["id"], time.time(), rec["url_domain"], rec["channel_name"], rec["size_mb"], rec["hour"], rec["day_of_week"],
-            rec["cpu"], rec["ram"], rec["latency"], rec["actual_speed"], rec["success"], rec["is_critical"], sig, error_magnitude,
-            student["c"], student["b"], student["d"], student["p"],
-            teacher["c"], teacher["b"], teacher["d"], teacher["p"], source
+        c.execute("""
+            INSERT INTO experiences
+            (timestamp, url_domain, full_url, channel_name, size_mb, hour, day_of_week,
+             cpu, ram, latency, target_num_conn, target_buffer, target_delay, target_prefetch,
+             actual_speed, success, is_critical)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            time.time(),
+            "teacher.local",
+            f"http://teacher.local/live/{rec['id']}.ts",
+            "Teacher-Sim",
+            size_mb, t.tm_hour, t.tm_wday,
+            rec["cpu"], rec["ram"], rec["latency"],
+            teacher["c"], teacher["b"], teacher["d"], teacher["p"],
+            speed, success, is_crit
         ))
         c.commit(); c.close()
 
@@ -289,78 +311,19 @@ class StudentTrainer:
     @staticmethod
     def train(turbo=False):
         if not turbo:
-            print(f"\n  {C.MAGENTA}{C.BOLD}🧠 Acumulados {BATCH_TO_TRAIN} reprobados. Iniciando Reentrenamiento (Replay Buffer)...{C.RESET}")
+            print(f"\n  {C.MAGENTA}{C.BOLD}\ud83e� Acumulados {BATCH_TO_TRAIN} reprobados. Delegando a evolve_brain()...{C.RESET}")
         try:
-            # Replay Buffer PER: 4K peores errores + 4K aleatorios + 2K recientes
-            c = sqlite3.connect(GOLD_DB); c.row_factory = sqlite3.Row
-            data = c.execute("SELECT * FROM gold_experiences ORDER BY error_magnitude DESC LIMIT 4000").fetchall()
-            data += c.execute("SELECT * FROM gold_experiences ORDER BY RANDOM() LIMIT 4000").fetchall()
-            data += c.execute("SELECT * FROM gold_experiences ORDER BY id DESC LIMIT 2000").fetchall()
-            c.close()
-
-            if len(data) < 50: 
-                print(f"  {C.YELLOW}⚠️ Muy pocos datos en BD ({len(data)}), omitiendo entreno.{C.RESET}")
-                return
-
-            X, Y = [], []
-            for r in data:
-                try:
-                    features = [
-                        math.log1p(float(r["size_mb"] or 0)),
-                        math.sin(2 * math.pi * float(r["hour"] or 0) / 24), math.cos(2 * math.pi * float(r["hour"] or 0) / 24),
-                        math.sin(2 * math.pi * float(r["day_of_week"] or 0) / 7), math.cos(2 * math.pi * float(r["day_of_week"] or 0) / 7),
-                        float(r["cpu"] or 0), float(r["ram"] or 0),
-                        (float(r["cpu"] or 0) * float(r["ram"] or 0)) / 10000,
-                        hash(r["url_domain"] or "") % 100,
-                        math.sqrt(max(0, float(r["latency"] or 0))),
-                        math.log1p(max(0, float(r["latency"] or 0))),
-                        0.5
-                    ]
-                    X.append(features)
-                    Y.append([
-                        float(r["target_num_conn"] or 8), 
-                        math.log(max(1, float(r["target_buffer"] or 1024))), 
-                        float(r["target_delay"] or 0.1), 
-                        float(r["target_prefetch"] or 4)
-                    ])
-                except Exception:
-                    continue
-
-            if len(X) < 50: return
-
-            X, Y = np.array(X), np.array(Y)
-            
-            # IMPROVEMENT: Cargar Scalers existentes para usar partial_fit y no resetear la media/varianza (que invalidaría pesos)
-            scaler_x = joblib.load(SCALER_X_PATH) if os.path.exists(SCALER_X_PATH) else StandardScaler()
-            scaler_y = joblib.load(SCALER_Y_PATH) if os.path.exists(SCALER_Y_PATH) else StandardScaler()
-            
-            if not hasattr(scaler_x, 'mean_'):
-                X_scaled = scaler_x.fit_transform(X)
-                Y_scaled = scaler_y.fit_transform(Y)
-            else:
-                scaler_x.partial_fit(X)
-                scaler_y.partial_fit(Y)
-                X_scaled = scaler_x.transform(X)
-                Y_scaled = scaler_y.transform(Y)
-
-            # Cargar Modelo con warm_start (continuar donde dejamos)
-            model = joblib.load(MODEL_PATH) if os.path.exists(MODEL_PATH) else MLPRegressor(
-                hidden_layer_sizes=(32, 24, 16, 8), activation='relu', solver='adam', max_iter=800, warm_start=True)
-            
-            # Se fuerza el parametro warm_start siempre a True para no perder conocimiento
-            model.warm_start = True
-            model.fit(X_scaled, Y_scaled)
-            
-            joblib.dump(model, MODEL_PATH)
-            joblib.dump(scaler_x, SCALER_X_PATH)
-            joblib.dump(scaler_y, SCALER_Y_PATH)
-            
+            from iptv_ai_core import ai_optimizer
+            ai_optimizer.evolve_brain()
+            student = AIStudent()
+            student.load_brain()  # recarga los pkl que evolve_brain acaba de actualizar
             if not turbo:
-                print(f"  {C.GREEN}✅ Modelo reentrenado. Muestras: {len(X):,}. Loss: {model.loss_:.6f}{C.RESET}\n")
-            return model.loss_
+                err = ai_optimizer.config.get("avg_error", 0)
+                print(f"  {C.GREEN}\u2705 evolve_brain() completado. Error: {err:.6f}{C.RESET}\n")
+            return ai_optimizer.config.get("avg_error", 0)
         except Exception as e:
             if not turbo:
-                print(f"  {C.RED}❌ Error en entrenamiento: {e}{C.RESET}\n")
+                print(f"  {C.RED}\u274c Error en entrenamiento: {e}{C.RESET}\n")
             return None
 
 # ═══════════════════════════════════════════════════════════════════════════

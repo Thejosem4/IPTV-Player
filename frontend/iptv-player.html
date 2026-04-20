@@ -1,6 +1,21 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
   <head>
+    <script>
+    (function() {
+        const ERR_TO_HIDE = ['isMSE', 'share-modal', 'content-script', 'linkvertise', 'chrome-extension://', 'message channel closed', 'listener indicated an asynchronous response', 'bufferStalledError', 'bufferNudgeOnStall'];
+        const _onerror = window.onerror;
+        window.onerror = function(msg, src, line, col, err) {
+            const s = String(msg || "") + String(src || "");
+            if (ERR_TO_HIDE.some(p => s.includes(p))) return true;
+            return _onerror ? _onerror.call(this, msg, src, line, col, err) : false;
+        };
+        window.addEventListener('unhandledrejection', function(e) {
+            const s = String(e.reason?.message || "") + String(e.reason || "");
+            if (ERR_TO_HIDE.some(p => s.includes(p))) e.preventDefault();
+        }, true);
+    })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Reproductor IPTV v7.0</title>
@@ -193,7 +208,7 @@
         transform: translateX(5px);
       }
 
-      /* â”€â”€ Series â”€â”€ */
+      /* ── Series ── */
       .series-item {
         margin-bottom: 6px;
         background: #ffffff;
@@ -364,7 +379,7 @@
         transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       }
 
-      /* â”€â”€ Modo Cine â”€â”€ */
+      /* ── Modo Cine ── */
       body.cinema-mode {
         overflow: hidden;
       }
@@ -465,10 +480,10 @@
         background: #000;
       }
 
-      /* â”€â”€ Fullscreen via JS (ver applyFullscreenStyles en el script) â”€â”€â”€â”€â”€â”€â”€ */
+      /* ── Fullscreen via JS (ver applyFullscreenStyles en el script) ─────── */
       /* Los pseudo-selectores :fullscreen no pueden sobreescribir inline styles, */
-      /* por eso lo manejamos en JS vÃ­a fullscreenchange event.                  */
-      /* Esta regla es solo fallback para navegadores que sÃ­ lo soporten:        */
+      /* por eso lo manejamos en JS vía fullscreenchange event.                  */
+      /* Esta regla es solo fallback para navegadores que sí lo soporten:        */
       #videoWrapper:-webkit-full-screen {
         background: #000;
       }
@@ -633,10 +648,10 @@
   <body>
     <div class="container">
       <h1>
-        ðŸ“º Reproductor IPTV v7.0
+        📺 Reproductor IPTV v7.0
         <span class="success-badge">SERIES & VOD</span>
-        <span class="success-badge">âš¡ CACHÃ‰ GZIP</span>
-        <span class="success-badge">ðŸ”„ AUTO-SYNC</span>
+        <span class="success-badge">⚡ CACHÉ GZIP</span>
+        <span class="success-badge">🔄 AUTO-SYNC</span>
       </h1>
 
       <div class="url-section">
@@ -654,30 +669,30 @@
             class="btn btn-warning"
             id="checkBtn"
             onclick="checkM3U()"
-            title="Verificar si la lista estÃ¡ activa (rÃ¡pido)"
+            title="Verificar si la lista está activa (rápido)"
           >
-            ðŸ” Verificar
+            🔍 Verificar
           </button>
           <button
             class="btn btn-success"
             onclick="toggleCacheModal()"
             title="Gestionar playlists guardadas"
           >
-            ðŸ’¾ Playlists
+            💾 Playlists
           </button>
           <button
             class="btn btn-danger"
             onclick="clearAllCache()"
             title="Eliminar todas las playlists"
           >
-            ðŸ—‘ï¸ Limpiar Todo
+            🗑️ Limpiar Todo
           </button>
         </div>
         <div id="cacheInfo" class="cache-info" style="display: none">
-          <span class="cache-badge">ðŸ’¾ CACHÃ‰</span>
-          <span id="cacheText">Cargando desde cachÃ© local...</span>
+          <span class="cache-badge">💾 CACHÉ</span>
+          <span id="cacheText">Cargando desde caché local...</span>
         </div>
-        <!-- Resultado de verificaciÃ³n rÃ¡pida de lista -->
+        <!-- Resultado de verificación rápida de lista -->
         <div
           id="checkResult"
           style="
@@ -695,11 +710,11 @@
 
       <div class="content-tabs">
         <button class="tab-btn active" onclick="switchTab('channels')">
-          ðŸ“¡ Canales en Vivo
+          📡 Canales en Vivo
         </button>
-        <button class="tab-btn" onclick="switchTab('series')">ðŸ“º Series</button>
+        <button class="tab-btn" onclick="switchTab('series')">📺 Series</button>
         <button class="tab-btn" onclick="switchTab('movies')">
-          ðŸŽ¬ PelÃ­culas
+          🎬 Películas
         </button>
       </div>
 
@@ -709,10 +724,10 @@
             type="text"
             class="search-box"
             id="searchBox"
-            placeholder="ðŸ” Buscar..."
+            placeholder="🔍 Buscar..."
           />
           <select class="group-select" id="groupSelect" style="display: none">
-            <option value="">ðŸ“‚ Todos los grupos</option>
+            <option value="">📂 Todos los grupos</option>
           </select>
           <button
             class="btn btn-success"
@@ -720,13 +735,13 @@
             style="width: 100%; margin-bottom: 10px; display: none"
             id="downloadGroupBtn"
           >
-            ðŸ’¾ Descargar M3U de este grupo
+            💾 Descargar M3U de este grupo
           </button>
 
           <div id="contentList"></div>
           <div id="loadMore" class="load-more" style="display: none">
             <button class="btn btn-primary" onclick="loadMoreChannels()">
-              Cargar mÃ¡s...
+              Cargar más...
             </button>
           </div>
         </div>
@@ -737,10 +752,10 @@
             <div class="loading">
               <div>Carga una lista M3U para comenzar</div>
               <div class="debug-info" style="margin-top: 20px">
-                ðŸ’¡ Canales: TransmisiÃ³n en vivo<br />
-                ðŸ’¡ Series: Organizado por temporadas y episodios<br />
-                ðŸ’¡ PelÃ­culas: ReproducciÃ³n directa con seeking<br />
-                ðŸ’¡ CachÃ©: Los M3U se guardan localmente para carga rÃ¡pida
+                💡 Canales: Transmisión en vivo<br />
+                💡 Series: Organizado por temporadas y episodios<br />
+                💡 Películas: Reproducción directa con seeking<br />
+                💡 Caché: Los M3U se guardan localmente para carga rápida
               </div>
             </div>
           </div>
@@ -748,11 +763,11 @@
       </div>
     </div>
 
-    <!-- Modal de GestiÃ³n de CachÃ© -->
+    <!-- Modal de Gestión de Caché -->
     <div id="cacheModal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>ðŸ’¾ Playlists Guardadas</h2>
+          <h2>💾 Playlists Guardadas</h2>
           <button class="modal-close" onclick="toggleCacheModal()">
             &times;
           </button>
@@ -777,10 +792,10 @@
             "
           >
             <div style="font-weight: bold; color: #1976d2; font-size: 14px">
-              ðŸ”„ Auto-actualizaciÃ³n
+              🔄 Auto-actualización
             </div>
             <span id="autoRefreshStatus" style="font-size: 12px; color: #999"
-              >â¸ï¸ Desactivado</span
+              >⏸️ Desactivado</span
             >
           </div>
           <div
@@ -837,13 +852,13 @@
               <option value="720">Cada 12 horas</option>
             </select>
             <span style="font-size: 11px; color: #666; flex: 1">
-              Actualiza las playlists automÃ¡ticamente en segundo plano.
+              Actualiza las playlists automáticamente en segundo plano.
             </span>
           </div>
         </div>
 
         <div id="cacheManager">
-          <!-- Se llenarÃ¡ dinÃ¡micamente -->
+          <!-- Se llenará dinámicamente -->
         </div>
       </div>
     </div>
@@ -856,8 +871,8 @@
       let searchTimeout = null;
       let hls = null;
 
-      // â”€â”€ Control de seeking VOD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // vodSeekTimer: debounce â€” espera 600ms despuÃ©s de que el usuario suelte
+      // ── Control de seeking VOD ───────────────────────────────────────────
+      // vodSeekTimer: debounce â€” espera 600ms después de que el usuario suelte
       //   el seekbar antes de lanzar el transcode. Evita lanzar 5 FFmpeg en
       //   un arrastre de 2 segundos.
       // vodCurrentStreamId: stream activo â€” al lanzar seek nuevo, el servidor
@@ -869,10 +884,10 @@
       let playTimeout = null;
       let retryCount = 0;
       let currentQuality = "auto";
-      // Guard contra streams duplicados: solo la invocaciÃ³n mÃ¡s reciente de
-      // playChannel puede crear un HLS. Cualquier llamada anterior que todavÃ­a
-      // estÃ© suspendida en un await se cancela al detectar que su nÃºmero de
-      // generaciÃ³n ya no es el actual.
+      // Guard contra streams duplicados: solo la invocación más reciente de
+      // playChannel puede crear un HLS. Cualquier llamada anterior que todavía
+      // esté suspendida en un await se cancela al detectar que su número de
+      // generación ya no es el actual.
       let playGeneration = 0;
       let cinemaMode = false; // modo cine (viewport fill, no fullscreen API)
 
@@ -880,6 +895,7 @@
       let allSeries = [];
       let allMovies = [];
       let currentTab = "channels";
+      let currentCachedPlaylistId = null; // ID de la playlist actualmente cargada desde caché
 
       // Variables para virtual scrolling
       let currentRenderIndex = 0;
@@ -889,7 +905,7 @@
 
       const CACHE_KEY_PREFIX = "iptv_playlist_";
       const CACHE_INDEX_KEY = "iptv_playlists_index";
-      const CACHE_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 dÃ­as
+      const CACHE_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 días
 
       // Variable global para buffer de video
       let currentVideoBuffer = null;
@@ -898,7 +914,7 @@
       // TEST DE VELOCIDAD: Detecta velocidad ANTES de reproducir
       // ============================================================
       async function testNetworkSpeed(url, sizeKB = 100) {
-        console.log("ðŸ” Probando velocidad de red...");
+        console.log("🔍 Probando velocidad de red...");
 
         const testSize = sizeKB * 1024;
         const startTime = Date.now();
@@ -917,7 +933,7 @@
           const speedKBps = blob.size / 1024 / elapsed;
 
           console.log(
-            `âœ… Test completado: ${speedKBps.toFixed(
+            `✅ Test completado: ${speedKBps.toFixed(
               1,
             )} KB/s en ${elapsed.toFixed(2)}s`,
           );
@@ -928,7 +944,7 @@
             bytes: blob.size,
           };
         } catch (error) {
-          console.error("âŒ Test de velocidad fallÃ³:", error);
+          console.error("❌ Test de velocidad falló:", error);
           return { speedKBps: 0, elapsed: 0, bytes: 0 };
         }
       }
@@ -937,21 +953,21 @@
         if (speedKBps > 500) {
           return {
             category: "excellent",
-            message: "ðŸš€ Velocidad excelente - ReproducciÃ³n fluida",
+            message: "🚀 Velocidad excelente - Reproducción fluida",
             color: "#4caf50",
             canPlay: true,
           };
         } else if (speedKBps > 200) {
           return {
             category: "good",
-            message: "ðŸ“¶ Buena velocidad - ReproducciÃ³n estable",
+            message: "📶 Buena velocidad - Reproducción estable",
             color: "#8bc34a",
             canPlay: true,
           };
         } else if (speedKBps > 100) {
           return {
             category: "fair",
-            message: "âš ï¸ Velocidad aceptable - Puede tener pausas",
+            message: "⚠️ Velocidad aceptable - Puede tener pausas",
             color: "#ff9800",
             canPlay: true,
           };
@@ -965,7 +981,7 @@
         } else {
           return {
             category: "critical",
-            message: "âŒ Velocidad crÃ­tica - No reproducible",
+            message: "❌ Velocidad crítica - No reproducible",
             color: "#f44336",
             canPlay: false,
           };
@@ -973,7 +989,7 @@
       }
 
       // ============================================================
-      // AUTO-REFRESH: ConfiguraciÃ³n y Polling
+      // AUTO-REFRESH: Configuración y Polling
       // ============================================================
       let autoRefreshConfig = { enabled: false, interval_minutes: 60 };
       let autoRefreshTimer = null;
@@ -984,7 +1000,7 @@
           autoRefreshConfig = await r.json();
           updateAutoRefreshUI();
         } catch (e) {
-          /* servidor puede no estar listo aÃºn */
+          /* servidor puede no estar listo aún */
         }
       }
 
@@ -998,9 +1014,9 @@
           autoRefreshConfig = { ...autoRefreshConfig, ...cfg };
           updateAutoRefreshUI();
           restartAutoRefreshTimer();
-          console.log("âš™ï¸ Auto-refresh configurado:", autoRefreshConfig);
+          console.log("⚙️ Auto-refresh configurado:", autoRefreshConfig);
         } catch (e) {
-          console.error("âŒ Error guardando config:", e);
+          console.error("❌ Error guardando config:", e);
         }
       }
 
@@ -1012,8 +1028,8 @@
         if (interval) interval.value = autoRefreshConfig.interval_minutes;
         if (statusEl)
           statusEl.textContent = autoRefreshConfig.enabled
-            ? `ðŸ”„ Activo â€“ cada ${autoRefreshConfig.interval_minutes} min`
-            : "â¸ï¸ Desactivado";
+            ? `🔄 Activo – cada ${autoRefreshConfig.interval_minutes} min`
+            : "⏸️ Desactivado";
         if (statusEl)
           statusEl.style.color = autoRefreshConfig.enabled ? "#4caf50" : "#999";
       }
@@ -1025,18 +1041,18 @@
         const ms = autoRefreshConfig.interval_minutes * 60 * 1000;
         autoRefreshTimer = setInterval(
           async () => {
-            console.log("ðŸ”„ Auto-refresh: comprobando playlists...");
+            console.log("🔄 Auto-refresh: comprobando playlists...");
             const index = await getCacheIndex();
             for (const entry of index) {
               const age = (Date.now() - entry.timestamp) / 1000 / 60;
               if (age >= autoRefreshConfig.interval_minutes) {
-                console.log(`ðŸ”„ Actualizando: ${entry.name}`);
+                console.log(`🔄 Actualizando: ${entry.name}`);
                 await triggerRefresh(entry.id);
               }
             }
           },
           Math.max(ms / 4, 5 * 60 * 1000),
-        ); // Poll cada 1/4 del intervalo (mÃ­n 5 min)
+        ); // Poll cada 1/4 del intervalo (mín 5 min)
       }
 
       async function triggerRefresh(playlistId) {
@@ -1044,13 +1060,73 @@
           const r = await fetch(`/api/cache/refresh/${playlistId}`);
           const d = await r.json();
           if (d.status === "refreshing") {
-            console.log(`âœ… Refresh iniciado: ${playlistId}`);
+            console.log(`✅ Refresh iniciado: ${playlistId}`);
             // Esperar y comprobar resultado
             setTimeout(() => checkRefreshStatus(playlistId), 15000);
           }
         } catch (e) {
-          console.warn("âš ï¸ Error al disparar refresh:", e);
+          console.warn("⚠️ Error al disparar refresh:", e);
         }
+      }
+
+      function initCacheUpdateListener() {
+        const evtSource = new EventSource("/api/cache/updates");
+
+        evtSource.onmessage = async function(e) {
+          const data = JSON.parse(e.data);
+          const { playlist_id, total, name } = data;
+
+          // Actualizar silenciosamente en memoria si la playlist activa fue la que se refresccó
+          if (playlist_id === currentCachedPlaylistId) {
+            try {
+              const cacheData = await loadFromCache(playlist_id);
+              if (!cacheData) return;
+
+              // Actualizar datos en memoria sin interrumpir al usuario
+              allChannels = cacheData.live || [];
+              allSeries   = cacheData.series  || [];
+              allMovies   = cacheData.movies  || [];
+
+              updateGroupsForCurrentTab();
+              renderCurrentTab();
+
+              // Mostrar notificación no intrusiva
+              showSilentUpdateToast(name, total);
+            } catch (err) {
+              console.warn("⚠️ Error al aplicar actualización silenciosa:", err);
+            }
+          } else {
+            // Era otra playlist; solo mostrar badge discreto en el gestor de caché
+            updateCacheManager();
+          }
+        };
+
+        evtSource.onerror = function() {
+          // Reconectar automáticamente tras 5 segundos (el navegador ya lo hace con SSE,
+          // pero esto fuerza un reinicio limpio si la conexión muere definitivamente)
+          evtSource.close();
+          setTimeout(initCacheUpdateListener, 5000);
+        };
+      }
+
+      function showSilentUpdateToast(name, total) {
+        // Eliminar toast anterior si existe
+        const old = document.getElementById("silentUpdateToast");
+        if (old) old.remove();
+
+        const toast = document.createElement("div");
+        toast.id = "silentUpdateToast";
+        toast.style.cssText = `
+          position: fixed; bottom: 30px; right: 20px; z-index: 99999;
+          background: #1a73e8; color: white; padding: 12px 18px;
+          border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          font-size: 13px; font-weight: bold;
+          animation: slideIn 0.3s ease;
+        `;
+        toast.innerHTML = `🔄 <b>${name}</b> actualizada en segundo plano<br>
+          <span style="font-size:11px;opacity:0.85">${total.toLocaleString()} canales disponibles · ya aplicado</span>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 6000);
       }
 
       async function checkRefreshStatus(playlistId) {
@@ -1061,11 +1137,11 @@
           if (!s) return;
 
           if (s.status === "success") {
-            console.log(`âœ… Refresh completado: ${s.total} canales`);
+            console.log(`✅ Refresh completado: ${s.total} canales`);
             showRefreshNotification(playlistId, s.total);
             await updateCacheManager();
           } else if (s.status === "error") {
-            console.warn(`âŒ Refresh fallÃ³: ${s.error}`);
+            console.warn(`❌ Refresh falló: ${s.error}`);
           }
         } catch (e) {
           /* ignorar */
@@ -1081,7 +1157,7 @@
           font-size: 14px; font-weight: bold; cursor: pointer;
           animation: slideIn 0.3s ease;
         `;
-        banner.innerHTML = `ðŸ”„ Playlist actualizada â€“ ${total.toLocaleString()} canales<br>
+        banner.innerHTML = `🔄 Playlist actualizada – ${total.toLocaleString()} canales<br>
           <span style="font-size:12px;opacity:0.9">Clic para recargar</span>`;
         banner.onclick = () => {
           document.body.removeChild(banner);
@@ -1099,16 +1175,16 @@
         const btn = document.getElementById(`refreshBtn_${playlistId}`);
         if (btn) {
           btn.disabled = true;
-          btn.textContent = "âŒ› Actualizando...";
+          btn.textContent = "⌛ Actualizando...";
         }
 
         try {
           await triggerRefresh(playlistId);
 
-          // Polling inteligente: continÃºa mientras status === 'refreshing'
-          // Sin lÃ­mite fijo de tiempo â€” para cuando llega success/error
+          // Polling inteligente: continúa mientras status === 'refreshing'
+          // Sin límite fijo de tiempo â€” para cuando llega success/error
           let attempts = 0;
-          const MAX_WAIT = 180; // 3 minutos mÃ¡ximo
+          const MAX_WAIT = 180; // 3 minutos máximo
           const INTERVAL = 2000; // cada 2 segundos
 
           const poll = setInterval(async () => {
@@ -1118,23 +1194,23 @@
               const d = await r.json();
               const s = d[playlistId];
 
-              if (!s) return; // AÃºn no arrancÃ³
+              if (!s) return; // Aún no arrancó
 
               if (s.status === "refreshing") {
-                // TodavÃ­a descargando â€” actualizar botÃ³n con tiempo transcurrido
+                // Todavía descargando â€” actualizar botón con tiempo transcurrido
                 const elapsed = Math.round(
                   Date.now() / 1000 -
                     s.timestamp +
                     attempts * (INTERVAL / 1000),
                 );
-                if (btn) btn.textContent = `âŒ› Descargando... (${elapsed}s)`;
+                if (btn) btn.textContent = `⌛ Descargando... (${elapsed}s)`;
                 if ((attempts * INTERVAL) / 1000 > MAX_WAIT) {
                   clearInterval(poll);
                   if (btn) {
                     btn.disabled = false;
-                    btn.textContent = "ðŸ”„ Actualizar";
+                    btn.textContent = "🔄 Actualizar";
                   }
-                  alert("âš ï¸ Timeout: La actualizaciÃ³n tomÃ³ demasiado tiempo");
+                  alert("⚠️ Timeout: La actualización tomó demasiado tiempo");
                 }
                 return;
               }
@@ -1147,22 +1223,22 @@
                 showRefreshNotification(playlistId, s.total);
               } else {
                 alert(
-                  `âŒ Error actualizando: ${s.error || "Error desconocido"}`,
+                  `❌ Error actualizando: ${s.error || "Error desconocido"}`,
                 );
               }
               if (btn) {
                 btn.disabled = false;
-                btn.textContent = "ðŸ”„ Actualizar";
+                btn.textContent = "🔄 Actualizar";
               }
             } catch (e) {
               // Error de red transitorio â€” seguir intentando
             }
           }, INTERVAL);
         } catch (e) {
-          console.error("âŒ Error:", e);
+          console.error("❌ Error:", e);
           if (btn) {
             btn.disabled = false;
-            btn.textContent = "ðŸ”„ Actualizar";
+            btn.textContent = "🔄 Actualizar";
           }
         }
       }
@@ -1170,10 +1246,10 @@
       async function getCacheIndex() {
         try {
           const response = await fetch("/api/cache/list");
-          if (!response.ok) throw new Error("Error cargando Ã­ndice");
+          if (!response.ok) throw new Error("Error cargando índice");
           return await response.json();
         } catch (e) {
-          console.warn("âš ï¸ Error al leer Ã­ndice de cachÃ©:", e);
+          console.warn("⚠️ Error al leer índice de caché:", e);
           return [];
         }
       }
@@ -1182,12 +1258,12 @@
         try {
           localStorage.setItem(CACHE_INDEX_KEY, JSON.stringify(index));
         } catch (e) {
-          console.warn("âš ï¸ Error al guardar Ã­ndice de cachÃ©:", e);
+          console.warn("⚠️ Error al guardar índice de caché:", e);
         }
       }
 
       function generatePlaylistId(url) {
-        // Generar ID Ãºnico basado en la URL
+        // Generar ID único basado en la URL
         let hash = 0;
         for (let i = 0; i < url.length; i++) {
           const char = url.charCodeAt(i);
@@ -1199,7 +1275,7 @@
 
       async function saveToCache(url, data) {
         try {
-          console.log("ðŸ’¾ Iniciando guardado en cachÃ© (DISCO)...");
+          console.log("💾 Iniciando guardado en caché (DISCO)...");
 
           const playlistId = generatePlaylistId(url);
 
@@ -1268,15 +1344,15 @@
 
           if (!response.ok) throw new Error("Error en servidor");
 
-          console.log(`âœ… Playlist guardada exitosamente: ${friendlyName}`);
+          console.log(`✅ Playlist guardada exitosamente: ${friendlyName}`);
 
           // Actualizar UI del gestor
           await updateCacheManager();
 
           return true;
         } catch (e) {
-          console.error("âŒ Error al guardar en cachÃ©:", e);
-          alert("âŒ Error al guardar playlist en disco");
+          console.error("❌ Error al guardar en caché:", e);
+          alert("❌ Error al guardar playlist en disco");
           return false;
         }
       }
@@ -1292,7 +1368,7 @@
 
           return cacheData;
         } catch (e) {
-          console.warn("âš ï¸ Error al leer cachÃ©:", e);
+          console.warn("⚠️ Error al leer caché:", e);
           return null;
         }
       }
@@ -1300,22 +1376,22 @@
       async function deletePlaylistCache(playlistId) {
         try {
           await fetch(`/api/cache/delete/${playlistId}`, { method: 'DELETE' });
-          console.log(`ðŸ—‘ï¸ Playlist eliminada del disco: ${playlistId}`);
+          console.log(`🗑️ Playlist eliminada del disco: ${playlistId}`);
           await updateCacheManager();
         } catch (e) {
-          console.warn("âš ï¸ Error al eliminar cachÃ©:", e);
+          console.warn("⚠️ Error al eliminar caché:", e);
         }
       }
 
       async function clearAllCache() {
         if (
           confirm(
-            "Â¿Eliminar TODAS las playlists guardadas del disco?\n\nEsta acciÃ³n no se puede deshacer.",
+            "¿Eliminar TODAS las playlists guardadas del disco?\n\nEsta acción no se puede deshacer.",
           )
         ) {
           try {
             await fetch("/api/cache/clear", { method: 'DELETE' });
-            console.log("ðŸ—‘ï¸ Todas las playlists eliminadas");
+            console.log("🗑️ Todas las playlists eliminadas");
 
             allChannels = [];
             allSeries = [];
@@ -1325,10 +1401,10 @@
             document.getElementById("cacheInfo").style.display = "none";
 
             await updateCacheManager();
-            alert("âœ… Todas las playlists han sido eliminadas del disco");
+            alert("✅ Todas las playlists han sido eliminadas del disco");
           } catch (e) {
-            console.error("âŒ Error:", e);
-            alert("âŒ Error al limpiar cachÃ©");
+            console.error("❌ Error:", e);
+            alert("❌ Error al limpiar caché");
           }
         }
       }
@@ -1355,7 +1431,7 @@
 
         if (diffDays === 0) return "Hoy";
         if (diffDays === 1) return "Ayer";
-        if (diffDays < 7) return `Hace ${diffDays} dÃ­as`;
+        if (diffDays < 7) return `Hace ${diffDays} días`;
         if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} semanas`;
         return `Hace ${Math.floor(diffDays / 30)} meses`;
       }
@@ -1365,32 +1441,32 @@
         if (!manager) return;
 
         manager.innerHTML =
-          '<div style="text-align:center; padding:20px;">âŒ› Cargando playlists...</div>';
+          '<div style="text-align:center; padding:20px;">⌛ Cargando playlists...</div>';
 
         const index = await getCacheIndex();
 
         if (index.length === 0) {
           manager.innerHTML = `
             <div style="padding: 20px; text-align: center; color: #999;">
-              <div style="font-size: 48px; margin-bottom: 10px;">ðŸ“¦</div>
+              <div style="font-size: 48px; margin-bottom: 10px;">📦</div>
               <div>No hay playlists guardadas en disco</div>
             </div>
           `;
           return;
         }
 
-        // Simular cÃ¡lculo de tamaÃ±o (en disco no lo sabemos sin preguntar al server, usamos placeholder)
+        // Simular cálculo de tamaño (en disco no lo sabemos sin preguntar al server, usamos placeholder)
         // Para simplificar, mostramos solo conteo
         let html = `
           <div style="margin-bottom: 15px; padding: 10px; background: #e3f2fd; border-radius: 8px; font-size: 13px;">
-            <strong>ðŸ’¾ ${index.length} playlist${
+            <strong>💾 ${index.length} playlist${
               index.length !== 1 ? "s" : ""
             } guardada${index.length !== 1 ? "s" : ""}</strong>
-            <span style="margin-left: 10px; opacity: 0.8;">(en C:/IPTV_Cache)</span>
+            <span style="margin-left: 10px; opacity: 0.8;">(en la carpeta cache local)</span>
           </div>
         `;
 
-        // Ordenar por timestamp (mÃ¡s reciente primero)
+        // Ordenar por timestamp (más reciente primero)
         index.sort((a, b) => b.timestamp - a.timestamp);
 
         index.forEach((item) => {
@@ -1399,8 +1475,8 @@
           if (item.username || item.password) {
             credentialsHtml = `
               <div style="font-size: 11px; color: #2196F3; margin-bottom: 3px; font-family: monospace;">
-                ðŸ‘¤ ${item.username || "(sin usuario)"} â€¢ ðŸ” ${
-                  item.password ? "â€¢â€¢â€¢â€¢â€¢" : "(sin contraseÃ±a)"
+                👤 ${item.username || "(sin usuario)"} â€¢ 🔐 ${
+                  item.password ? "â€¢â€¢â€¢â€¢â€¢" : "(sin contraseña)"
                 }
               </div>
             `;
@@ -1415,7 +1491,7 @@
                 : item.serverUrl;
             serverHtml = `
               <div style="font-size: 11px; color: #9c27b0; margin-bottom: 3px;">
-                ðŸŒ ${shortUrl}
+                🌐 ${shortUrl}
               </div>
             `;
           }
@@ -1428,7 +1504,7 @@
                   <div style="font-weight: bold; font-size: 15px; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333;" title="${
                     item.name
                   }">
-                    ðŸ“º ${item.name}
+                    📺 ${item.name}
                   </div>
                   
                   <!-- Credenciales -->
@@ -1437,35 +1513,35 @@
                   <!-- Servidor -->
                   ${serverHtml}
                   
-                  <!-- EstadÃ­sticas -->
+                  <!-- Estadísticas -->
                   <div style="font-size: 12px; color: #666; margin-bottom: 5px; display: flex; gap: 12px; flex-wrap: wrap;">
-                    <span title="Canales en vivo">ðŸ“¡ ${item.live.toLocaleString()}</span>
-                    <span title="Series">ðŸ“º ${item.series.toLocaleString()}</span>
-                    <span title="PelÃ­culas">ðŸŽ¬ ${item.movies.toLocaleString()}</span>
-                    <span style="color: #999;">ðŸ“¦ ${item.totalChannels.toLocaleString()} total</span>
+                    <span title="Canales en vivo">📡 ${item.live.toLocaleString()}</span>
+                    <span title="Series">📺 ${item.series.toLocaleString()}</span>
+                    <span title="Películas">🎬 ${item.movies.toLocaleString()}</span>
+                    <span style="color: #999;">📦 ${item.totalChannels.toLocaleString()} total</span>
                   </div>
                   
                   <!-- Fecha -->
                   <div style="font-size: 11px; color: #999; display:flex; align-items:center; gap:6px;">
-                    ðŸ• ${formatDate(item.timestamp)}
+                    🐕 ${formatDate(item.timestamp)}
                     ${
                       Date.now() - item.timestamp < 5 * 60 * 1000
-                        ? '<span style="background:#4caf50;color:white;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:bold;">âœ¨ ReciÃ©n actualizado</span>'
+                        ? '<span style="background:#4caf50;color:white;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:bold;">âœ¨ Recién actualizado</span>'
                         : Date.now() - item.timestamp > 12 * 60 * 60 * 1000
-                          ? '<span style="background:#ff9800;color:white;padding:2px 7px;border-radius:10px;font-size:10px;">âš ï¸ Desactualizado</span>'
+                          ? '<span style="background:#ff9800;color:white;padding:2px 7px;border-radius:10px;font-size:10px;">⚠️ Desactualizado</span>'
                           : ""
                     }
                   </div>
                 </div>
                 
-                <!-- Botones de acciÃ³n -->
+                <!-- Botones de acción -->
                 <div style="display: flex; gap: 5px; flex-shrink: 0; flex-direction: column;">
                   <button 
                     onclick="loadPlaylistFromCache('${item.id}')" 
                     class="btn btn-primary" 
                     style="padding: 8px 15px; font-size: 13px; min-width: 80px;"
                     title="Cargar esta playlist">
-                    â–¶ï¸ Cargar
+                    ▶️ Cargar
                   </button>
                   <button 
                     id="refreshBtn_${item.id}"
@@ -1473,14 +1549,14 @@
                     class="btn btn-success" 
                     style="padding: 8px 15px; font-size: 13px; min-width: 80px;"
                     title="Re-descargar lista del servidor">
-                    ðŸ”„ Actualizar
+                    🔄 Actualizar
                   </button>
                   <button 
                     onclick="deletePlaylistCache('${item.id}')" 
                     class="btn btn-danger" 
                     style="padding: 8px 15px; font-size: 13px; min-width: 80px;"
-                    title="Eliminar del cachÃ©">
-                    ðŸ—‘ï¸ Borrar
+                    title="Eliminar del caché">
+                    🗑️ Borrar
                   </button>
                 </div>
               </div>
@@ -1496,12 +1572,12 @@
           const cacheData = await loadFromCache(playlistId);
 
           if (!cacheData) {
-            alert("âŒ Playlist no encontrada en disco");
+            alert("❌ Playlist no encontrada en disco");
             await updateCacheManager();
             return;
           }
 
-          console.log("âš¡ Cargando desde disco:", cacheData.url);
+          console.log("⚡ Cargando desde disco:", cacheData.url);
 
           // Actualizar URL en el input
           document.getElementById("m3uUrl").value = cacheData.url;
@@ -1519,17 +1595,19 @@
 
           document.getElementById("cacheInfo").style.display = "flex";
           document.getElementById("cacheText").textContent =
-            "ðŸ’¾ Cargado desde disco local C:/IPTV_Cache";
+            "💾 Cargado desde disco local la carpeta cache local";
 
           console.log(
-            `âœ… Cargado: ${allChannels.length} canales | ${allSeries.length} series | ${allMovies.length} pelÃ­culas`,
+            `✅ Cargado: ${allChannels.length} canales | ${allSeries.length} series | ${allMovies.length} películas`,
           );
 
-          // Cerrar modal si estÃ¡ abierto
+          currentCachedPlaylistId = playlistId;
+
+          // Cerrar modal si está abierto
           toggleCacheModal();
         } catch (e) {
-          console.error("âŒ Error:", e);
-          alert("âŒ Error al cargar playlist del disco");
+          console.error("❌ Error:", e);
+          alert("❌ Error al cargar playlist del disco");
         }
       }
 
@@ -1571,11 +1649,11 @@
           // Remover comillas sobrantes que quedan
           .replace(/^["'\s]+|["'\s]+$/g, "")
 
-          // Limpiar espacios mÃºltiples
+          // Limpiar espacios múltiples
           .replace(/\s+/g, " ")
           .trim();
 
-        // Si despuÃ©s de limpiar queda vacÃ­o, retornar algo
+        // Si después de limpiar queda vacío, retornar algo
         return cleaned || "Sin nombre";
       }
 
@@ -1585,7 +1663,7 @@
         const movies = [];
         const seriesMap = {};
 
-        console.log(`ðŸ” Categorizando ${channels.length} items...`);
+        console.log(`🔍 Categorizando ${channels.length} items...`);
 
         channels.forEach((ch, index) => {
           // Mostrar progreso cada 10000 items
@@ -1626,7 +1704,7 @@
           let episode = 1;
           let seriesName = ch.name;
 
-          // Intentar detectar patrÃ³n de episodio en el NOMBRE
+          // Intentar detectar patrón de episodio en el NOMBRE
           for (const pattern of episodePatterns) {
             const match = ch.name.match(pattern);
             if (match) {
@@ -1651,10 +1729,10 @@
             group.includes("live") ||
             name.includes("canal") ||
             name.includes("tv ") ||
-            (name.includes("hd") && !episodeMatch); // HD sin patrÃ³n de episodio = canal
+            (name.includes("hd") && !episodeMatch); // HD sin patrón de episodio = canal
 
           // ============================================================
-          // DECISIÃ“N: Â¿Es una SERIE?
+          // DECISIÃ“N: ¿Es una SERIE?
           // ============================================================
           const isSeries =
             (isSeriesURL || episodeMatch || hasEpisodeKeyword) &&
@@ -1706,16 +1784,16 @@
                 .replace(/\s*:\s*$/, "") // Quitar dos puntos finales
                 .trim();
 
-              // Debug: ver quÃ© se estÃ¡ detectando
+              // Debug: ver qué se está detectando
               if (index < 10) {
                 // Solo primeros 10 para no saturar
                 console.log(
-                  `   ðŸŽ¬ Serie detectada: "${seriesName}" S${season}E${episode} | Original: "${ch.name}"`,
+                  `   🎬 Serie detectada: "${seriesName}" S${season}E${episode} | Original: "${ch.name}"`,
                 );
               }
             }
 
-            // Si despuÃ©s de limpiar el nombre queda muy corto, probablemente no sea una serie
+            // Si después de limpiar el nombre queda muy corto, probablemente no sea una serie
             if (seriesName.length < 3) {
               live.push({ ...ch, type: "live" });
               return;
@@ -1767,25 +1845,25 @@
           }
         });
 
-        // â”€â”€ Post-proceso: ordenar y arreglar numeraciÃ³n de episodios â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Post-proceso: ordenar y arreglar numeración de episodios ────────
         Object.values(seriesMap).forEach((serie) => {
           Object.keys(serie.seasons).forEach((season) => {
             const eps = serie.seasons[season];
 
-            // Ordenar por nÃºmero de episodio (o por orden de apariciÃ³n si estÃ¡n empatados)
+            // Ordenar por número de episodio (o por orden de aparición si están empatados)
             eps.sort((a, b) => a.episode - b.episode);
 
-            // Detectar si todos los episodios tienen el mismo nÃºmero (datos de fuente defectuosos)
+            // Detectar si todos los episodios tienen el mismo número (datos de fuente defectuosos)
             // Por ej: el proveedor etiqueta todo como S01E01 sin incrementar
             const nums = eps.map((e) => e.episode);
             const allSame = nums.length > 1 && nums.every((n) => n === nums[0]);
             if (allSame) {
-              // Auto-numeraciÃ³n por posiciÃ³n (E01, E02, E03...)
+              // Auto-numeración por posición (E01, E02, E03...)
               eps.forEach((ep, i) => {
                 ep.episode = i + 1;
               });
               console.log(
-                `   âš ï¸ Auto-numerando "${serie.name}" T${season}: ${eps.length} eps con E${String(nums[0]).padStart(2, "0")} duplicado`,
+                `   ⚠️ Auto-numerando "${serie.name}" T${season}: ${eps.length} eps con E${String(nums[0]).padStart(2, "0")} duplicado`,
               );
             } else {
               // Detectar duplicados parciales y resolverlos
@@ -1806,10 +1884,10 @@
           series.push(serie);
         });
 
-        console.log(`âœ… CategorizaciÃ³n completa:`);
-        console.log(`   ðŸ“¡ ${live.length} canales en vivo`);
-        console.log(`   ðŸ“º ${series.length} series`);
-        console.log(`   ðŸŽ¬ ${movies.length} pelÃ­culas`);
+        console.log(`✅ Categorización completa:`);
+        console.log(`   📡 ${live.length} canales en vivo`);
+        console.log(`   📺 ${series.length} series`);
+        console.log(`   🎬 ${movies.length} películas`);
 
         return { live, series, movies };
       }
@@ -1817,7 +1895,7 @@
       async function checkM3U() {
         const url = document.getElementById("m3uUrl").value.trim();
         if (!url) {
-          alert("âš ï¸ Ingresa una URL de lista M3U para verificar");
+          alert("⚠️ Ingresa una URL de lista M3U para verificar");
           return;
         }
 
@@ -1830,7 +1908,7 @@
         box.style.background = "#f8f9fa";
         box.style.borderColor = "#aaa";
         box.style.color = "#333";
-        box.innerHTML = `<span style="animation:spin 1s linear infinite;display:inline-block">â³</span> Conectando al servidor... (mÃ¡x 10s)`;
+        box.innerHTML = `<span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Conectando al servidor... (máx 10s)`;
 
         try {
           const resp = await fetch(
@@ -1839,7 +1917,7 @@
           const d = await resp.json();
 
           const latency = d.latency_ms != null ? `${d.latency_ms}ms` : "â€”";
-          const code = d.http_code != null ? ` Â· HTTP ${d.http_code}` : "";
+          const code = d.http_code != null ? ` · HTTP ${d.http_code}` : "";
 
           let bg, border, textColor;
           if (d.active) {
@@ -1875,7 +1953,7 @@
               d.active
                 ? `<div style="margin-top:8px">
               <button class="btn btn-primary" style="font-size:12px;padding:4px 12px"
-                onclick="loadPlaylist()">ðŸ“¥ Cargar lista ahora</button>
+                onclick="loadPlaylist()">📥 Cargar lista ahora</button>
             </div>`
                 : ""
             }`;
@@ -1883,17 +1961,17 @@
           box.style.background = "#f8d7da";
           box.style.borderColor = "#dc3545";
           box.style.color = "#721c24";
-          box.innerHTML = `<b>âŒ Error al verificar</b><br><span style="font-size:12px">${err.message}</span>`;
+          box.innerHTML = `<b>❌ Error al verificar</b><br><span style="font-size:12px">${err.message}</span>`;
         } finally {
           btn.disabled = false;
-          btn.textContent = "ðŸ” Verificar";
+          btn.textContent = "🔍 Verificar";
         }
       }
 
       async function loadPlaylist() {
         const url = document.getElementById("m3uUrl").value.trim();
         if (!url) {
-          alert("âš ï¸ Por favor ingresa una URL de lista M3U");
+          alert("⚠️ Por favor ingresa una URL de lista M3U");
           return;
         }
 
@@ -1901,20 +1979,17 @@
         btn.disabled = true;
         btn.textContent = "Cargando...";
 
-        // NOTA: El sistema de cachÃ© localStorage antiguo ha sido eliminado.
-        // Ahora usamos el sistema de servidor C:/IPTV_Cache que es mÃ¡s robusto.
-        // La carga desde cachÃ© se maneja explÃ­citamente con loadPlaylistFromCache()
+        // NOTA: El sistema de caché localStorage antiguo ha sido eliminado.
+        // Ahora usamos el sistema de servidor la carpeta cache local que es más robusto.
+        // La carga desde caché se maneja explícitamente con loadPlaylistFromCache()
 
         document.getElementById("contentList").innerHTML =
-          '<div class="loading"><div class="spinner"></div><div>ðŸ“¡ Descargando M3U del servidor...</div><div style="margin-top:10px; font-size:12px;">El servidor puede usar su cachÃ© si ya descargÃ³ este M3U...</div></div>';
-
-        document.getElementById("contentList").innerHTML =
-          '<div class="loading"><div class="spinner"></div><div>ðŸ“¡ Descargando M3U del servidor...</div><div style="margin-top:10px; font-size:12px;">El servidor puede usar su cachÃ© si ya descargÃ³ este M3U...</div></div>';
+          '<div class="loading"><div class="spinner"></div><div>📡 Descargando M3U del servidor...</div><div style="margin-top:10px; font-size:12px;">El servidor puede usar su caché si ya descargó este M3U...</div></div>';
 
         document.getElementById("cacheInfo").style.display = "none";
 
         try {
-          console.log("ðŸ”„ Solicitando M3U al servidor...");
+          console.log("🔄 Solicitando M3U al servidor...");
           const response = await fetch(
             `/api/load-m3u?url=${encodeURIComponent(url)}`,
           );
@@ -1923,27 +1998,27 @@
           if (data.error) throw new Error(data.error);
 
           if (data.status === "cached") {
-            console.log("ðŸ’¾ Servidor usÃ³ su cachÃ©");
+            console.log("💾 Servidor usó su caché");
             document.getElementById("cacheInfo").style.display = "flex";
             document.getElementById("cacheText").textContent =
-              "âš¡ Servidor usÃ³ cachÃ© (rÃ¡pido)";
+              "⚡ Servidor usó caché (rápido)";
           } else {
-            console.log("ðŸ“¥ Servidor descargÃ³ M3U nuevo");
+            console.log("📥 Servidor descargó M3U nuevo");
           }
 
           console.log(
-            `âœ… M3U disponible en servidor: ${data.total} items totales`,
+            `✅ M3U disponible en servidor: ${data.total} items totales`,
           );
 
           document.getElementById("contentList").innerHTML =
-            '<div class="loading"><div class="spinner"></div><div>ðŸ“¦ Cargando contenido desde servidor...</div><div style="margin-top:10px; font-size:12px;">Descargando todo el contenido...</div></div>';
+            '<div class="loading"><div class="spinner"></div><div>📦 Cargando contenido desde servidor...</div><div style="margin-top:10px; font-size:12px;">Descargando todo el contenido...</div></div>';
 
           // Cargar TODO en chunks para evitar congelar el navegador
           const CHUNK_SIZE = 5000;
           let allItems = [];
           let offset = 0;
 
-          console.log("ðŸ“¦ Cargando contenido en chunks...");
+          console.log("📦 Cargando contenido en chunks...");
 
           while (offset < data.total) {
             const chunkResponse = await fetch(
@@ -1962,20 +2037,20 @@
               Math.floor((offset / data.total) * 100),
             );
             document.getElementById("contentList").innerHTML =
-              `<div class="loading"><div class="spinner"></div><div>ðŸ“¦ Cargando contenido: ${progress}%</div><div style="margin-top:10px; font-size:12px;">${allItems.length.toLocaleString()} / ${data.total.toLocaleString()} items...</div></div>`;
+              `<div class="loading"><div class="spinner"></div><div>📦 Cargando contenido: ${progress}%</div><div style="margin-top:10px; font-size:12px;">${allItems.length.toLocaleString()} / ${data.total.toLocaleString()} items...</div></div>`;
 
-            console.log(`ðŸ“¦ Chunk: ${allItems.length} / ${data.total}`);
+            console.log(`📦 Chunk: ${allItems.length} / ${data.total}`);
 
-            // PequeÃ±a pausa para no congelar el navegador
+            // Pequeña pausa para no congelar el navegador
             await new Promise((resolve) => setTimeout(resolve, 50));
 
             if (chunkData.results.length < CHUNK_SIZE) break;
           }
 
-          console.log(`âœ… Contenido cargado: ${allItems.length} items`);
+          console.log(`✅ Contenido cargado: ${allItems.length} items`);
 
           document.getElementById("contentList").innerHTML =
-            '<div class="loading"><div class="spinner"></div><div>ðŸ” Categorizando contenido...</div><div style="margin-top:10px; font-size:12px;">Separando canales, series y pelÃ­culas...</div></div>';
+            '<div class="loading"><div class="spinner"></div><div>🔍 Categorizando contenido...</div><div style="margin-top:10px; font-size:12px;">Separando canales, series y películas...</div></div>';
 
           // Categorizar en un proceso separado para no congelar
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1985,14 +2060,14 @@
           allSeries = categorized.series;
           allMovies = categorized.movies;
 
-          console.log(`ðŸ“¡ Canales en vivo: ${allChannels.length}`);
-          console.log(`ðŸ“º Series: ${allSeries.length}`);
-          console.log(`ðŸŽ¬ PelÃ­culas: ${allMovies.length}`);
+          console.log(`📡 Canales en vivo: ${allChannels.length}`);
+          console.log(`📺 Series: ${allSeries.length}`);
+          console.log(`🎬 Películas: ${allMovies.length}`);
 
-          const statsHTML = `âœ… ${allChannels.length.toLocaleString()} Canales | ${allSeries.length.toLocaleString()} Series | ${allMovies.length.toLocaleString()} PelÃ­culas`;
+          const statsHTML = `✅ ${allChannels.length.toLocaleString()} Canales | ${allSeries.length.toLocaleString()} Series | ${allMovies.length.toLocaleString()} Películas`;
 
-          // Guardar en cachÃ© del cliente
-          console.log("ðŸ’¾ Guardando en cachÃ© del cliente...");
+          // Guardar en caché del cliente
+          console.log("💾 Guardando en caché del cliente...");
           saveToCache(url, {
             channels: allItems,
             live: allChannels,
@@ -2000,7 +2075,7 @@
             movies: allMovies,
             stats: statsHTML,
           });
-          console.log("âœ… Guardado en cachÃ© completado");
+          console.log("✅ Guardado en caché completado");
 
           updateGroupsForCurrentTab();
           renderCurrentTab();
@@ -2008,17 +2083,17 @@
           document.getElementById("stats").innerHTML = statsHTML;
           document.getElementById("stats").style.display = "block";
 
-          // Mostrar confirmaciÃ³n de guardado
+          // Mostrar confirmación de guardado
           document.getElementById("cacheInfo").style.display = "flex";
           document.getElementById("cacheText").textContent =
-            "ðŸ’¾ Guardado en cachÃ© local para cargas futuras";
+            "💾 Guardado en caché local para cargas futuras";
 
           setTimeout(() => {
             document.getElementById("cacheInfo").style.display = "none";
           }, 5000);
         } catch (error) {
-          console.error("âŒ Error:", error);
-          alert("âŒ Error al cargar M3U:\n\n" + error.message);
+          console.error("❌ Error:", error);
+          alert("❌ Error al cargar M3U:\n\n" + error.message);
           document.getElementById("contentList").innerHTML = "";
         } finally {
           btn.disabled = false;
@@ -2032,7 +2107,7 @@
           const data = await response.json();
 
           const select = document.getElementById("groupSelect");
-          select.innerHTML = `<option value="">ðŸ“‚ Todos (${data.total})</option>`;
+          select.innerHTML = `<option value="">📂 Todos (${data.total})</option>`;
 
           data.groups.forEach((g) => {
             const option = document.createElement("option");
@@ -2046,8 +2121,8 @@
       }
 
       function updateGroupsFromCache() {
-        // Ya no se usa esta funciÃ³n, ahora actualizamos grupos por pestaÃ±a
-        console.log("âœ… Grupos se actualizarÃ¡n dinÃ¡micamente por pestaÃ±a");
+        // Ya no se usa esta función, ahora actualizamos grupos por pestaña
+        console.log("✅ Grupos se actualizarán dinámicamente por pestaña");
       }
 
       function updateGroupsForCurrentTab() {
@@ -2065,7 +2140,7 @@
           tabName = "Series";
         } else if (currentTab === "movies") {
           items = allMovies || [];
-          tabName = "PelÃ­culas";
+          tabName = "Películas";
         }
 
         if (!items || items.length === 0) {
@@ -2082,9 +2157,9 @@
         });
 
         const total = items.length;
-        select.innerHTML = `<option value="">ðŸ“‚ Todos (${total.toLocaleString()})</option>`;
+        select.innerHTML = `<option value="">📂 Todos (${total.toLocaleString()})</option>`;
 
-        // Ordenar grupos alfabÃ©ticamente
+        // Ordenar grupos alfabéticamente
         const sortedGroups = Object.keys(groupCounts).sort();
 
         sortedGroups.forEach((group) => {
@@ -2100,7 +2175,7 @@
         downloadBtn.style.display = "block";
 
         console.log(
-          `âœ… Grupos actualizados para ${tabName}: ${sortedGroups.length} grupos`,
+          `✅ Grupos actualizados para ${tabName}: ${sortedGroups.length} grupos`,
         );
       }
 
@@ -2115,10 +2190,10 @@
         document.getElementById("searchBox").value = "";
         document.getElementById("groupSelect").value = "";
 
-        // Actualizar grupos segÃºn la pestaÃ±a actual
+        // Actualizar grupos según la pestaña actual
         updateGroupsForCurrentTab();
 
-        // Renderizar inmediatamente (mostrarÃ¡ el mensaje de "usa el buscador")
+        // Renderizar inmediatamente (mostrará el mensaje de "usa el buscador")
         renderCurrentTab();
       }
 
@@ -2157,7 +2232,7 @@
         }
 
         console.log(
-          `ðŸ“º Renderizando ${filtered.length} canales progresivamente...`,
+          `📺 Renderizando ${filtered.length} canales progresivamente...`,
         );
 
         container.innerHTML = "";
@@ -2166,7 +2241,7 @@
         // Renderizar inicial
         renderChannelBatch(filtered, container, INITIAL_RENDER_COUNT);
 
-        // Setup scroll listener para cargar mÃ¡s
+        // Setup scroll listener para cargar más
         setupScrollListener(filtered, container, "channel");
       }
 
@@ -2191,9 +2266,9 @@
         container.appendChild(fragment);
         currentRenderIndex = end;
 
-        console.log(`âœ… Renderizados ${end} de ${filtered.length} canales`);
+        console.log(`✅ Renderizados ${end} de ${filtered.length} canales`);
 
-        // Si quedan mÃ¡s, agregar indicador
+        // Si quedan más, agregar indicador
         if (end < filtered.length) {
           let loadingIndicator = document.getElementById(
             "loading-more-indicator",
@@ -2202,11 +2277,11 @@
             loadingIndicator = document.createElement("div");
             loadingIndicator.id = "loading-more-indicator";
             loadingIndicator.className = "loading-more";
-            loadingIndicator.innerHTML = "â¬‡ï¸ DesplÃ¡zate para cargar mÃ¡s...";
+            loadingIndicator.innerHTML = "â¬‡ï¸ Desplázate para cargar más...";
             container.appendChild(loadingIndicator);
           }
         } else {
-          // Remover indicador si ya no hay mÃ¡s
+          // Remover indicador si ya no hay más
           const indicator = document.getElementById("loading-more-indicator");
           if (indicator) indicator.remove();
         }
@@ -2221,12 +2296,12 @@
         }
 
         panel._scrollListener = () => {
-          // Detectar si estÃ¡ cerca del final
+          // Detectar si está cerca del final
           const scrollTop = panel.scrollTop;
           const scrollHeight = panel.scrollHeight;
           const clientHeight = panel.clientHeight;
 
-          // Si estÃ¡ a 300px del final, cargar mÃ¡s
+          // Si está a 300px del final, cargar más
           if (
             scrollHeight - scrollTop - clientHeight < 300 &&
             !isRendering &&
@@ -2267,14 +2342,14 @@
         }
 
         console.log(
-          `ðŸ“º Renderizando ${filtered.length} series progresivamente...`,
+          `📺 Renderizando ${filtered.length} series progresivamente...`,
         );
 
         container.innerHTML = "";
         currentRenderIndex = 0;
 
         // Renderizar inicial
-        renderSeriesBatch(filtered, container, 50); // Menos series iniciales porque son mÃ¡s complejas
+        renderSeriesBatch(filtered, container, 50); // Menos series iniciales porque son más complejas
 
         // Setup scroll listener
         setupScrollListener(filtered, container, "series");
@@ -2296,7 +2371,7 @@
             0,
           );
 
-          // â”€â”€ Card de la serie â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Card de la serie ────────────────────────────────────────────────
           const card = document.createElement("div");
           card.className = "series-item";
 
@@ -2304,7 +2379,7 @@
           const header = document.createElement("div");
           header.className = "series-header";
           header.innerHTML = `
-            <span class="series-arrow">â–¶</span>
+            <span class="series-arrow">▶</span>
             <span class="series-name">${serie.name}</span>
             <span class="series-info">${seasonKeys.length} temp â€¢ ${totalEp} ep</span>
           `;
@@ -2319,7 +2394,7 @@
             seasonsPanel.classList.toggle("open", isOpen);
           };
 
-          // â”€â”€ Temporadas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Temporadas ──────────────────────────────────────────────────────
           seasonKeys.forEach((seasonNum, sIdx) => {
             const episodes = serie.seasons[seasonNum];
 
@@ -2329,7 +2404,7 @@
             const seasonHeader = document.createElement("div");
             seasonHeader.className = "season-header";
             seasonHeader.innerHTML = `
-              <span class="season-arrow">â–¶</span>
+              <span class="season-arrow">▶</span>
               <span class="season-label">Temporada ${seasonNum}</span>
               <span class="season-count">${episodes.length} episodios</span>
             `;
@@ -2348,7 +2423,7 @@
             // Marcar primera temporada como open visualmente
             if (sIdx === 0) seasonHeader.classList.add("open");
 
-            // â”€â”€ Episodios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Episodios ───────────────────────────────────────────────────
             episodes.forEach((ep) => {
               const epDiv = document.createElement("div");
               epDiv.className = "episode-item";
@@ -2358,7 +2433,7 @@
               epNum.className = "ep-num";
               epNum.textContent = `Episodio ${ep.episode}`;
 
-              // TÃ­tulo limpio (opcional): quitar nombre de serie y cÃ³digo S##E##
+              // Título limpio (opcional): quitar nombre de serie y código S##E##
               let title = ep.fullName || ep.name || "";
               const serLower = serie.name.toLowerCase().trim();
               if (title.toLowerCase().startsWith(serLower)) {
@@ -2366,9 +2441,9 @@
               }
               // Quitar S01E01, T01E01, 1x01, etc.
               title = title
-                .replace(/^[â€“\-:Â·|\s]+/, "")
+                .replace(/^[–\-:·|\s]+/, "")
                 .replace(/^[ST]?\d+\s*[xXeE]\d+\s*/i, "")
-                .replace(/^[â€“\-:Â·|\s]+/, "")
+                .replace(/^[–\-:·|\s]+/, "")
                 .trim();
 
               const epTitle = document.createElement("span");
@@ -2405,7 +2480,7 @@
 
         container.appendChild(fragment);
         currentRenderIndex = end;
-        console.log(`âœ… Renderizadas ${end} de ${filtered.length} series`);
+        console.log(`✅ Renderizadas ${end} de ${filtered.length} series`);
 
         // Indicador de scroll infinito
         let loadingIndicator = document.getElementById(
@@ -2416,7 +2491,7 @@
             loadingIndicator = document.createElement("div");
             loadingIndicator.id = "loading-more-indicator";
             loadingIndicator.className = "loading-more";
-            loadingIndicator.innerHTML = "â¬‡ï¸ DesplÃ¡zate para cargar mÃ¡s...";
+            loadingIndicator.innerHTML = "â¬‡ï¸ Desplázate para cargar más...";
             container.appendChild(loadingIndicator);
           }
         } else if (loadingIndicator) {
@@ -2436,12 +2511,12 @@
 
         if (filtered.length === 0) {
           container.innerHTML =
-            '<div style="padding: 20px; text-align: center; color: #999;">Sin pelÃ­culas</div>';
+            '<div style="padding: 20px; text-align: center; color: #999;">Sin películas</div>';
           return;
         }
 
         console.log(
-          `ðŸŽ¬ Renderizando ${filtered.length} pelÃ­culas progresivamente...`,
+          `🎬 Renderizando ${filtered.length} películas progresivamente...`,
         );
 
         container.innerHTML = "";
@@ -2475,7 +2550,7 @@
         container.appendChild(fragment);
         currentRenderIndex = end;
 
-        console.log(`âœ… Renderizadas ${end} de ${filtered.length} pelÃ­culas`);
+        console.log(`✅ Renderizadas ${end} de ${filtered.length} películas`);
 
         // Indicador de carga
         if (end < filtered.length) {
@@ -2486,7 +2561,7 @@
             loadingIndicator = document.createElement("div");
             loadingIndicator.id = "loading-more-indicator";
             loadingIndicator.className = "loading-more";
-            loadingIndicator.innerHTML = "â¬‡ï¸ DesplÃ¡zate para cargar mÃ¡s...";
+            loadingIndicator.innerHTML = "â¬‡ï¸ Desplázate para cargar más...";
             container.appendChild(loadingIndicator);
           }
         } else {
@@ -2509,10 +2584,10 @@
       function loadMoreChannels() {}
 
       async function playChannel(channel) {
-        // â”€â”€ Guard anti-stream-duplicado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // Cada llamada recibe un nÃºmero de generaciÃ³n Ãºnico. Solo la ÃšLTIMA
-        // invocaciÃ³n puede crear el HLS. Las anteriores que estÃ©n suspendidas
-        // en awaits detectan que ya no son "la mÃ¡s reciente" y abortan.
+        // ── Guard anti-stream-duplicado ────────────────────────────────────
+        // Cada llamada recibe un número de generación único. Solo la ÃšLTIMA
+        // invocación puede crear el HLS. Las anteriores que estén suspendidas
+        // en awaits detectan que ya no son "la más reciente" y abortan.
         const myGen = ++playGeneration;
 
         currentChannel = channel;
@@ -2544,8 +2619,8 @@
         `;
         playerInfo.style.display = "block";
 
-        // Los overlays de calidad y modo son dinÃ¡micos (se inyectan en el wrapper de video)
-        // No hay referencias a elementos estÃ¡ticos aquÃ­
+        // Los overlays de calidad y modo son dinámicos (se inyectan en el wrapper de video)
+        // No hay referencias a elementos estáticos aquí
 
         document
           .querySelectorAll(".channel-item, .movie-item, .episode-item")
@@ -2559,16 +2634,16 @@
         const urlPath = urlWithoutParams.toLowerCase();
 
         console.log(`\n${"=".repeat(60)}`);
-        console.log(`â–¶ï¸ ${channel.name}`);
+        console.log(`▶️ ${channel.name}`);
         console.log(`ðŸ”— URL: ${channel.url.substring(0, 80)}...`);
         console.log(
-          `ðŸ“Ž ExtensiÃ³n: "${extension}" | forceVOD: ${!!channel.forceVOD}`,
+          `ðŸ“Ž Extensión: "${extension}" | forceVOD: ${!!channel.forceVOD}`,
         );
 
         let contentType = "LIVE";
 
         if (channel.forceVOD) {
-          // Episodio de serie: siempre proxy directo, sin importar extensiÃ³n ni path
+          // Episodio de serie: siempre proxy directo, sin importar extensión ni path
           // Los servidores IPTV devuelven 404 cuando FFmpeg accede a URLs /series/
           contentType = extension === "mp4" ? "MP4" : "MKV/AVI";
         } else if (extension === "mp4") {
@@ -2585,17 +2660,17 @@
           urlPath.includes("/vod/") ||
           urlPath.includes("/movie/")
         ) {
-          // Path de VOD sin extensiÃ³n clara â†’ proxy directo
+          // Path de VOD sin extensión clara â†’ proxy directo
           contentType = "MKV/AVI";
         } else {
-          // Sin extensiÃ³n reconocida y sin path de VOD â†’ stream en vivo
+          // Sin extensión reconocida y sin path de VOD â†’ stream en vivo
           contentType = "LIVE";
         }
 
-        console.log(`ðŸ“¡ Tipo asignado: ${contentType}`);
+        console.log(`📡 Tipo asignado: ${contentType}`);
         console.log(`${"=".repeat(60)}\n`);
 
-        // â”€â”€ Guard final antes de lanzar reproducciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Guard final antes de lanzar reproducción ─────────────────────
         if (myGen !== playGeneration) {
           console.log(
             `â›” playChannel gen#${myGen} cancelada antes de reproducir`,
@@ -2603,17 +2678,17 @@
           return;
         }
 
-        // Llamar funciÃ³n correcta segÃºn tipo
+        // Llamar función correcta según tipo
         if (contentType === "MP4" || contentType === "MKV/AVI") {
-          console.log(`ðŸŽ¬ ReproducciÃ³n ${contentType} - Proxy directo`);
+          console.log(`🎬 Reproducción ${contentType} - Proxy directo`);
           if (contentType === "MKV/AVI") {
             console.log(
-              "âš ï¸  Nota: MKV puede tener audio no soportado â†’ se detectarÃ¡ al reproducir",
+              "⚠️  Nota: MKV puede tener audio no soportado â†’ se detectará al reproducir",
             );
           }
           await playVODDirect(channel, myGen);
         } else {
-          console.log("ðŸ“¡ ReproducciÃ³n LIVE - FFmpeg HLS");
+          console.log("📡 Reproducción LIVE - FFmpeg HLS");
           await playLiveWithFFmpeg(channel, myGen);
         }
       }
@@ -2625,7 +2700,7 @@
         playerContent.innerHTML = `
           <div class="loading">
             <div class="spinner"></div>
-            <div>ðŸŽ¬ Procesando video MKV con FFmpeg...</div>
+            <div>🎬 Procesando video MKV con FFmpeg...</div>
             <div style="margin-top: 10px; font-size: 12px; color: #aaa;">
               Convirtiendo a HLS... esto puede tardar 15-40 segundos
             </div>
@@ -2633,7 +2708,7 @@
         `;
 
         try {
-          console.log("ðŸ”„ Solicitando conversiÃ³n FFmpeg para VOD (MKV/AVI)...");
+          console.log("🔄 Solicitando conversión FFmpeg para VOD (MKV/AVI)...");
 
           const response = await fetch(
             `/api/play-vod-hls?url=${encodeURIComponent(channel.url)}`,
@@ -2644,7 +2719,7 @@
             throw new Error(data.error);
           }
 
-          console.log(`âœ… FFmpeg iniciado - Stream ID: ${data.stream_id}`);
+          console.log(`✅ FFmpeg iniciado - Stream ID: ${data.stream_id}`);
 
           await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -2670,7 +2745,7 @@
           video.style.background = "#000";
           video.style.display = "block";
 
-          const timeDisplay = null; // Eliminado â€“ los controles nativos del video muestran el tiempo
+          const timeDisplay = null; // Eliminado – los controles nativos del video muestran el tiempo
 
           function formatTime(seconds) {
             if (isNaN(seconds) || seconds === Infinity) return "00:00";
@@ -2687,13 +2762,13 @@
           }
 
           playTimeout = setTimeout(() => {
-            console.log("â±ï¸ TIMEOUT - Video no responde");
-            showVODError("Video no responde despuÃ©s de 40 segundos", channel);
+            console.log("⏱️ TIMEOUT - Video no responde");
+            showVODError("Video no responde después de 40 segundos", channel);
           }, 40000);
 
           video.addEventListener("loadedmetadata", () => {
-            console.log("âœ… Metadata cargada");
-            console.log(`ðŸ“Š DuraciÃ³n: ${video.duration}s`);
+            console.log("✅ Metadata cargada");
+            console.log(`📊 Duración: ${video.duration}s`);
             clearTimeout(playTimeout);
 
             const hours = Math.floor(video.duration / 3600);
@@ -2704,28 +2779,28 @@
             playerInfo.innerHTML = `
               <h2>${channel.name}</h2>
               <p>${channel.group}</p>
-              <p style="font-size: 14px; opacity: 0.8; margin-top: 5px;">â±ï¸ DuraciÃ³n: ${durationStr}</p>
+              <p style="font-size: 14px; opacity: 0.8; margin-top: 5px;">⏱️ Duración: ${durationStr}</p>
             `;
           });
 
           video.addEventListener("canplay", () => {
-            console.log("âœ… Video listo para reproducir");
+            console.log("✅ Video listo para reproducir");
             clearTimeout(playTimeout);
           });
 
           video.addEventListener("playing", () => {
-            console.log("âœ… REPRODUCIENDO VOD (MKV/AVI) CON FFMPEG");
+            console.log("✅ REPRODUCIENDO VOD (MKV/AVI) CON FFMPEG");
             clearTimeout(playTimeout);
           });
 
           video.addEventListener("error", (e) => {
-            console.error("âŒ Error video:", video.error);
+            console.error("❌ Error video:", video.error);
             clearTimeout(playTimeout);
             showVODError("Error al reproducir video", channel);
           });
 
           videoContainer.appendChild(video);
-          // timeDisplay eliminado â€“ controles nativos del video ya muestran el tiempo
+          // timeDisplay eliminado – controles nativos del video ya muestran el tiempo
 
           playerContent.innerHTML = "";
           playerContent.appendChild(videoContainer);
@@ -2736,24 +2811,24 @@
             hls = new Hls({
               debug: false,
               enableWorker: true, // Web Worker para parsing â†’ no bloquea el main thread
-              lowLatencyMode: false, // LL-HLS requiere server especial; no aplica aquÃ­
-              // â”€â”€ Latencia live edge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              lowLatencyMode: false, // LL-HLS requiere server especial; no aplica aquí
+              // ── Latencia live edge ────────────────────────────────────────────
               liveSyncDurationCount: 2,
               liveMaxLatencyDurationCount: 6,
               maxLiveSyncPlaybackRate: 1.3,
-              // â”€â”€ Buffer mÃ­nimo para no gastar RAM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Buffer mínimo para no gastar RAM ─────────────────────────────
               maxBufferLength: 8,
               maxMaxBufferLength: 15,
               maxBufferSize: 8 * 1000 * 1000,
               backBufferLength: 10,
-              // â”€â”€ Retry agresivo para streams IPTV con 404 transitorios â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Retry agresivo para streams IPTV con 404 transitorios ────────
               fragLoadingMaxRetry: 6,
               fragLoadingRetryDelay: 500,
               fragLoadingMaxRetryTimeout: 8000,
               manifestLoadingMaxRetry: 5,
               manifestLoadingRetryDelay: 500,
               levelLoadingMaxRetry: 5,
-              // â”€â”€ Tolerancia a huecos de timestamps en streams IPTV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Tolerancia a huecos de timestamps en streams IPTV ───────────
               maxBufferHole: 0.5,
               maxSeekHole: 2,
               nudgeOffset: 0.2,
@@ -2826,21 +2901,21 @@
             showVODError("HLS no soportado en este navegador", channel);
           }
         } catch (error) {
-          console.error("âŒ Error:", error);
+          console.error("❌ Error:", error);
           clearTimeout(playTimeout);
           showVODError(`Error: ${error.message}`, channel);
         }
       }
 
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // VOD (pelÃ­culas y series): proxy directo + calidad + fix de audio real
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+      // ═══════════════════════════════════════════════════════════════════════
+      // VOD (películas y series): proxy directo + calidad + fix de audio real
+      // ═══════════════════════════════════════════════════════════════════════
 
       // Calidad actual para VOD (compartida entre peliculas/series)
       let vodQuality = "auto"; // auto | 720p | 480p | 360p
 
       async function playVODDirect(channel, myGen) {
-        // â”€â”€ Guard doble-stream â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Guard doble-stream ────────────────────────────────────────────────
         if (myGen !== undefined && myGen !== playGeneration) {
           console.log(`â›” playVODDirect gen#${myGen} cancelada`);
           return;
@@ -2873,14 +2948,14 @@
         }
       }
 
-      // â”€â”€ ReproducciÃ³n VOD por proxy directo (MP4 / calidad original) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Reproducción VOD por proxy directo (MP4 / calidad original) ─────────
       async function playVODProxy(channel, myGen) {
         if (myGen !== undefined && myGen !== playGeneration) return;
 
         const playerContent = document.getElementById("playerContent");
         const playerInfo = document.getElementById("playerInfo");
 
-        playerContent.innerHTML = `<div class="loading"><div class="spinner"></div><div>ðŸŽ¬ Cargando...</div></div>`;
+        playerContent.innerHTML = `<div class="loading"><div class="spinner"></div><div>🎬 Cargando...</div></div>`;
 
         const proxyUrl = `/api/proxy-video?url=${encodeURIComponent(channel.url)}`;
 
@@ -2896,15 +2971,15 @@
           "width:100%; max-height:550px; display:block; background:#000;";
         video.src = proxyUrl;
 
-        // â”€â”€ Barra de controles VOD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Barra de controles VOD ──────────────────────────────────────────
         const ctrlBar = buildVODCtrlBar(channel, myGen);
         wrapper.appendChild(video);
         wrapper.appendChild(ctrlBar);
 
-        // â”€â”€ Fullscreen â€” igual que canales en vivo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // El botÃ³n nativo del video fullscreenea solo el <video>.
+        // ── Fullscreen â€” igual que canales en vivo ──────────────────────────
+        // El botón nativo del video fullscreenea solo el <video>.
         // Interceptamos y redirigimos al wrapper para que los controles
-        // tambiÃ©n aparezcan en fullscreen con auto-hide.
+        // también aparezcan en fullscreen con auto-hide.
         let hideTimerProxy = null;
         function showProxyCtrl() {
           ctrlBar.style.opacity = "1";
@@ -2922,7 +2997,7 @@
         document.addEventListener("fullscreenchange", function onFSProxy() {
           const isFS = !!document.fullscreenElement;
           if (!isFS) {
-            // Salir de fullscreen (ESC o botÃ³n) â†’ pasar a modo cine
+            // Salir de fullscreen (ESC o botón) â†’ pasar a modo cine
             clearTimeout(hideTimerProxy);
             wrapper.removeEventListener("mousemove", showAndScheduleProxy);
             wrapper.removeEventListener("touchstart", showAndScheduleProxy);
@@ -2942,16 +3017,16 @@
             ctrlBar.querySelectorAll("button").forEach((b) => {
               if (
                 b.textContent.includes("Cine") ||
-                b.textContent.includes("âœ•")
+                b.textContent.includes("✖")
               ) {
-                b.textContent = "âœ• Cine";
+                b.textContent = "✖ Cine";
               }
             });
             window.scrollTo({ top: 0, behavior: "smooth" });
             // Quitar borde del video en modo normal
             video.style.borderRadius = "";
           } else if (document.fullscreenElement === video) {
-            // El usuario clickeÃ³ fullscreen nativo del video â†’ redirigir al wrapper
+            // El usuario clickeó fullscreen nativo del video â†’ redirigir al wrapper
             document
               .exitFullscreen()
               .then(() => {
@@ -2992,7 +3067,7 @@
           updateVODInfo(playerInfo, channel, video.duration);
         });
 
-        // Fetch duraciÃ³n en paralelo para el info panel
+        // Fetch duración en paralelo para el info panel
         (async () => {
           try {
             const rd = await fetch(
@@ -3004,14 +3079,14 @@
           } catch (e) {}
         })();
 
-        // â”€â”€ Auto-fix de audio: silencioso y automÃ¡tico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Auto-fix de audio: silencioso y automático ──────────────────────
         let audioFixAttempted = false;
         video.addEventListener("error", () => {
           if (myGen !== undefined && myGen !== playGeneration) return;
           const code = video.error ? video.error.code : 0;
           if (code === 3 && !audioFixAttempted) {
             audioFixAttempted = true;
-            showToast("ðŸ”§ Reparando audio automÃ¡ticamenteâ€¦", 4000);
+            showToast("ðŸ”§ Reparando audio automáticamenteâ€¦", 4000);
             playVODTranscoded(channel, myGen, "fix-audio");
           } else if (code !== 3) {
             showVODError("Error al reproducir", channel);
@@ -3021,7 +3096,7 @@
         let loadTimeout = setTimeout(() => {
           if (video.readyState < 2 && !audioFixAttempted) {
             audioFixAttempted = true;
-            showToast("â³ Carga lenta detectada â†’ optimizandoâ€¦", 3000);
+            showToast("⏳ Carga lenta detectada â†’ optimizandoâ€¦", 3000);
           }
         }, 15000);
         video.addEventListener("loadeddata", () => clearTimeout(loadTimeout), {
@@ -3037,7 +3112,7 @@
         });
       }
 
-      // â”€â”€ ReproducciÃ³n VOD via FFmpeg (calidad + fix de audio) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Reproducción VOD via FFmpeg (calidad + fix de audio) ────────────────
       // mode: "fix-audio" | "auto" | "720p" | "480p" | "360p"
       async function playVODTranscoded(
         channel,
@@ -3058,7 +3133,7 @@
             ? "ðŸ”Š Reparando audio (DTS/AC3 â†’ AAC)"
             : `ðŸ”½ Transcodificando a ${quality.toUpperCase()}`;
 
-        // â”€â”€ Barra de progreso animada mientras FFmpeg trabaja â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Barra de progreso animada mientras FFmpeg trabaja ─────────────
         // Si silent=true (seek), no mostramos nada â€” el usuario ve el video
         // congelado, que es feedback suficiente. Sin pantalla de carga.
         let elapsed = 0;
@@ -3078,7 +3153,7 @@
                 display:flex; flex-direction:column; align-items:center; justify-content:center;
                 min-height:240px; gap:16px; padding:28px; text-align:center; color:#fff;
               ">
-                <div style="font-size:32px;">âš™ï¸</div>
+                <div style="font-size:32px;">⚙️</div>
                 <div style="font-size:15px; font-weight:600;">${modeLabel}</div>
                 <div style="width:100%; max-width:340px;">
                   <div style="height:6px; background:rgba(255,255,255,0.15); border-radius:3px; overflow:hidden;">
@@ -3107,8 +3182,8 @@
         let data;
         try {
           // cancel_previous=1 â†’ el servidor cancela cualquier transcode previo
-          // para este mismo URL antes de crear el nuevo. Evita acumulaciÃ³n de
-          // procesos FFmpeg cuando el usuario hace varios seeks rÃ¡pidos.
+          // para este mismo URL antes de crear el nuevo. Evita acumulación de
+          // procesos FFmpeg cuando el usuario hace varios seeks rápidos.
           const resp = await fetch(
             `/api/transcode-vod?url=${encodeURIComponent(channel.url)}&quality=${quality}&start_time=${startTime}&cancel_previous=1`,
           );
@@ -3116,7 +3191,7 @@
         } catch (e) {
           clearInterval(progressInterval);
           if (myGen !== undefined && myGen !== playGeneration) return;
-          showVODError("Error de red al iniciar transcodificaciÃ³n", channel);
+          showVODError("Error de red al iniciar transcodificación", channel);
           return;
         }
 
@@ -3133,13 +3208,13 @@
         await new Promise((r) => setTimeout(r, 800));
         if (myGen !== undefined && myGen !== playGeneration) return;
 
-        // â”€â”€ DuraciÃ³n total: llamar /api/vod-duration en PARALELO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Duración total: llamar /api/vod-duration en PARALELO ─────────────
         // Esto bloquea hasta 18s en el servidor esperando ffprobe.
-        // La peticiÃ³n corre en paralelo con el montaje del player.
+        // La petición corre en paralelo con el montaje del player.
         // Cuando llega, actualiza el seekbar y el encabezado del video.
         let totalDuration = data.total_duration || 0;
 
-        // Lanzar la peticiÃ³n de duraciÃ³n en background â€” no esperamos aquÃ­
+        // Lanzar la petición de duración en background â€” no esperamos aquí
         (async () => {
           if (totalDuration > 0) return; // ya la tenemos
           try {
@@ -3149,7 +3224,7 @@
             const dd = await rd.json();
             if (dd.duration > 0) {
               totalDuration = dd.duration;
-              // Actualizar seekbar si el wrapper ya estÃ¡ montado
+              // Actualizar seekbar si el wrapper ya está montado
               const seekEl = document.querySelector(".vod-seek-input");
               if (seekEl) seekEl.max = String(totalDuration);
               const durEl = document.querySelector(".vod-time-total");
@@ -3170,7 +3245,7 @@
           } catch (e) {}
         })();
 
-        // â”€â”€ Montar player con controles personalizados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Montar player con controles personalizados ───────────────────────
         const wrapper = document.createElement("div");
         wrapper.className = "vod-player-wrapper";
         wrapper.style.cssText =
@@ -3192,7 +3267,7 @@
 
         wrapper.appendChild(video);
 
-        // â”€â”€ Construir barra de controles completa â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Construir barra de controles completa ─────────────────────────────
         const ctrl = buildVODTranscodeControls(
           channel,
           myGen,
@@ -3210,7 +3285,7 @@
         playerContent.appendChild(wrapper);
         if (myGen !== undefined && myGen !== playGeneration) return;
 
-        // â”€â”€ HLS.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── HLS.js ────────────────────────────────────────────────────────────
         if (Hls.isSupported()) {
           const hlsVOD = new Hls({
             debug: false,
@@ -3244,7 +3319,7 @@
             });
           });
 
-          // Cuando HLS.js conoce la duraciÃ³n, actualizar seekbar
+          // Cuando HLS.js conoce la duración, actualizar seekbar
           hlsVOD.on(Hls.Events.LEVEL_LOADED, (_, d) => {
             const hlsDur =
               d.details && d.details.totalduration
@@ -3293,7 +3368,7 @@
 
         updateVODInfo(playerInfo, channel, totalDuration || 0);
 
-        // FunciÃ³n para actualizar la duraciÃ³n en el seekbar cuando llega tarde
+        // Función para actualizar la duración en el seekbar cuando llega tarde
         function updateSeekbarDuration(dur, offset) {
           const seekEl = wrapper.querySelector(".vod-seek-input");
           if (seekEl) seekEl.max = dur;
@@ -3302,9 +3377,9 @@
         }
       }
 
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+      // ═══════════════════════════════════════════════════════════════════════
       // CONTROLES PERSONALIZADOS VOD â€” seekbar + play/pause + auto-hide FS
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+      // ═══════════════════════════════════════════════════════════════════════
       function buildVODTranscodeControls(
         channel,
         myGen,
@@ -3316,7 +3391,7 @@
         quality,
         mode,
       ) {
-        // â”€â”€ Tiempo formateado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Tiempo formateado ────────────────────────────────────────────────
         function fmt(s) {
           s = Math.max(0, Math.floor(s));
           const h = Math.floor(s / 3600);
@@ -3327,12 +3402,12 @@
           return `${m}:${String(sec).padStart(2, "0")}`;
         }
 
-        // â”€â”€ Estado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Estado ───────────────────────────────────────────────────────────
         let isDragging = false;
         let hideTimer = null;
         let isFullscreen = false;
 
-        // â”€â”€ RaÃ­z del ctrl bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Raíz del ctrl bar ────────────────────────────────────────────────
         const ctrl = document.createElement("div");
         ctrl.className = "vod-ctrl-bar";
         ctrl.style.cssText = `
@@ -3343,7 +3418,7 @@
           transition:opacity 0.35s ease;
         `;
 
-        // â”€â”€ Fila 1: Seekbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Fila 1: Seekbar ──────────────────────────────────────────────────
         const seekRow = document.createElement("div");
         seekRow.style.cssText =
           "display:flex; align-items:center; gap:6px; width:100%;";
@@ -3373,7 +3448,7 @@
 
         seekRow.append(timeNow, seek, timeTot);
 
-        // Actualizar posiciÃ³n del seek mientras el video avanza
+        // Actualizar posición del seek mientras el video avanza
         video.addEventListener("timeupdate", () => {
           if (isDragging) return;
           const t = video.currentTime + startOff;
@@ -3405,7 +3480,7 @@
           clearTimeout(vodSeekTimer);
           vodSeekTimer = setTimeout(async () => {
             console.log(
-              `â© Seek debounced a ${targetSec}s â†’ reiniciando transcode`,
+              `⏩ Seek debounced a ${targetSec}s â†’ reiniciando transcode`,
             );
 
             // Destruir HLS.js actual ANTES de pedir el nuevo stream
@@ -3430,7 +3505,7 @@
           }, 600);
         });
 
-        // â”€â”€ Fila 2: botones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Fila 2: botones ──────────────────────────────────────────────────
         const btnRow = document.createElement("div");
         btnRow.style.cssText =
           "display:flex; align-items:center; gap:6px; width:100%;";
@@ -3441,19 +3516,19 @@
 
         // Play/Pause
         const playBtn = document.createElement("button");
-        playBtn.textContent = "â¸";
+        playBtn.textContent = "⏸";
         playBtn.style.cssText = bStyle + "font-size:14px; min-width:30px;";
         playBtn.onclick = () => {
           if (video.paused) {
             video.play();
-            playBtn.textContent = "â¸";
+            playBtn.textContent = "⏸";
           } else {
             video.pause();
-            playBtn.textContent = "â–¶";
+            playBtn.textContent = "▶";
           }
         };
-        video.addEventListener("play", () => (playBtn.textContent = "â¸"));
-        video.addEventListener("pause", () => (playBtn.textContent = "â–¶"));
+        video.addEventListener("play", () => (playBtn.textContent = "⏸"));
+        video.addEventListener("pause", () => (playBtn.textContent = "▶"));
 
         // Spacer
         const spacer = document.createElement("div");
@@ -3465,10 +3540,10 @@
         qualSel.style.cssText = `background:#111; color:#fff; border:1px solid rgba(255,255,255,0.3);
           border-radius:6px; padding:3px 6px; font-size:11px; cursor:pointer; outline:none; flex-shrink:0;`;
         qualSel.innerHTML = `
-          <option value="auto">ðŸ§  IA ABR (Adaptativo)</option>
-          <option value="720p">ðŸ“¶ 720p â€” 1.8 Mbps</option>
-          <option value="480p">ðŸ“¶ 480p â€” 0.9 Mbps</option>
-          <option value="360p">ðŸ“¶ 360p â€” 0.5 Mbps</option>`;
+          <option value="auto">🧠 IA ABR (Adaptativo)</option>
+          <option value="720p">📶 720p â€” 1.8 Mbps</option>
+          <option value="480p">📶 480p â€” 0.9 Mbps</option>
+          <option value="360p">📶 360p â€” 0.5 Mbps</option>`;
         qualSel.value = vodQuality;
         qualSel.onchange = () => {
           vodQuality = qualSel.value;
@@ -3478,9 +3553,9 @@
         // Cine â†” Fullscreen: se alternan mutuamente
         // En fullscreen â†’ Cine sale de FS y entra en cine
         // En cine       â†’ Cine sale de cine y entra en FS
-        // ESC de FS     â†’ vuelve a cine automÃ¡ticamente
+        // ESC de FS     â†’ vuelve a cine automáticamente
         const cinBtn = document.createElement("button");
-        cinBtn.textContent = "ðŸŽ¬";
+        cinBtn.textContent = "🎬";
         cinBtn.title = "Modo cine";
         cinBtn.style.cssText = bStyle;
 
@@ -3488,7 +3563,7 @@
           cinemaMode = on;
           document.body.classList.toggle("cinema-mode", on);
           cinBtn.title = on ? "Salir de cine" : "Modo cine";
-          cinBtn.textContent = on ? "âœ•" : "ðŸŽ¬";
+          cinBtn.textContent = on ? "✖" : "🎬";
           if (on) window.scrollTo({ top: 0, behavior: "smooth" });
         }
 
@@ -3512,7 +3587,7 @@
         // Cuando el usuario sale de FS con ESC â†’ volver a cine
         document.addEventListener("fullscreenchange", () => {
           if (!document.fullscreenElement && isFullscreen) {
-            // SaliÃ³ de FS â†’ volver a cine
+            // Salió de FS â†’ volver a cine
             applyCinema(true);
           }
         });
@@ -3526,7 +3601,7 @@
 
         // VLC
         const vlcBtn = document.createElement("button");
-        vlcBtn.textContent = "ðŸ“º";
+        vlcBtn.textContent = "📺";
         vlcBtn.title = "Abrir en VLC";
         vlcBtn.style.cssText = bStyle + "background:rgba(255,102,0,0.65);";
         vlcBtn.onclick = () => openInVLC(channel.url);
@@ -3543,7 +3618,7 @@
 
         // Fullscreen â€” EN la barra, como los canales en vivo
         const fsBtn = document.createElement("button");
-        fsBtn.textContent = "â›¶";
+        fsBtn.textContent = "⛔";
         fsBtn.title = "Pantalla completa";
         fsBtn.style.cssText = bStyle + "font-size:15px;";
         fsBtn.onclick = () => {
@@ -3563,7 +3638,7 @@
         );
         ctrl.append(seekRow, btnRow);
 
-        // â”€â”€ Auto-hide en fullscreen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Auto-hide en fullscreen ──────────────────────────────────────────
         function showCtrl() {
           ctrl.style.opacity = "1";
           wrapper.style.cursor = "default";
@@ -3616,21 +3691,21 @@
               padding:6px 10px 8px; display:flex; flex-direction:column; gap:4px;
               transition:opacity 0.35s ease; opacity:1;
             `;
-            fsBtn.textContent = "â›¶";
+            fsBtn.textContent = "⛔";
           }
         };
         document.addEventListener("fullscreenchange", onFS);
         document.addEventListener("webkitfullscreenchange", onFS);
 
-        // Actualizar botÃ³n fs cuando se sale desde ESC
+        // Actualizar botón fs cuando se sale desde ESC
         document.addEventListener("fullscreenchange", () => {
-          if (!document.fullscreenElement) fsBtn.textContent = "â›¶";
+          if (!document.fullscreenElement) fsBtn.textContent = "⛔";
         });
 
         return ctrl;
       }
 
-      // â”€â”€ Prompt interactivo para reparar audio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Prompt interactivo para reparar audio ───────────────────────────────
       function showAudioFixPrompt(container, channel, myGen) {
         container.innerHTML = `
           <div style="
@@ -3652,10 +3727,10 @@
                 background:#ff6600; color:#fff;
                 border:none; border-radius:8px; padding:10px 20px; cursor:pointer;
                 font-size:13px;
-              ">ðŸ“º Abrir en VLC</button>
+              ">📺 Abrir en VLC</button>
             </div>
             <div style="font-size:11px; opacity:0.5;">
-              Reparar audio: Python descarga â†’ FFmpeg convierte a AAC â†’ reproducciÃ³n en ~20s
+              Reparar audio: Python descarga â†’ FFmpeg convierte a AAC â†’ reproducción en ~20s
             </div>
           </div>`;
         document.getElementById("btnFixAudio").onclick = () =>
@@ -3664,7 +3739,7 @@
           openInVLC(channel.url);
       }
 
-      // â”€â”€ Helpers VOD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Helpers VOD ─────────────────────────────────────────────────────────
       function updateVODInfo(playerInfo, channel, durationSecs) {
         const dur =
           !durationSecs || isNaN(durationSecs) || durationSecs === Infinity
@@ -3677,7 +3752,7 @@
         playerInfo.innerHTML = `
           <h2>${channel.name}</h2>
           <p>${channel.group || ""}</p>
-          ${dur ? `<p style="font-size:13px; opacity:0.75; margin-top:4px;">â±ï¸ ${dur}</p>` : ""}
+          ${dur ? `<p style="font-size:13px; opacity:0.75; margin-top:4px;">⏱️ ${dur}</p>` : ""}
         `;
       }
 
@@ -3695,10 +3770,10 @@
         qualSel.style.cssText = `background:#111; color:#fff; border:1px solid rgba(255,255,255,0.3);
           border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer; outline:none;`;
         qualSel.innerHTML = `
-          <option value="auto">ðŸ§  IA ABR (Optimizado)</option>
-          <option value="720p">ðŸ“¶ 720p â€” 1.8 Mbps</option>
-          <option value="480p">ðŸ“¶ 480p â€” 0.9 Mbps</option>
-          <option value="360p">ðŸ“¶ 360p â€” 0.5 Mbps</option>`;
+          <option value="auto">🧠 IA ABR (Optimizado)</option>
+          <option value="720p">📶 720p â€” 1.8 Mbps</option>
+          <option value="480p">📶 480p â€” 0.9 Mbps</option>
+          <option value="360p">📶 360p â€” 0.5 Mbps</option>`;
         qualSel.value = vodQuality;
         qualSel.onchange = () => {
           vodQuality = qualSel.value;
@@ -3706,13 +3781,13 @@
         };
 
         const cinBtn = document.createElement("button");
-        cinBtn.textContent = "ðŸŽ¬ Cine";
+        cinBtn.textContent = "🎬 Cine";
         cinBtn.style.cssText = `background:rgba(255,255,255,0.12); color:#fff; border:none; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:11px;`;
 
         function applyCinemaProxy(on) {
           cinemaMode = on;
           document.body.classList.toggle("cinema-mode", on);
-          cinBtn.textContent = on ? "âœ• Cine" : "ðŸŽ¬ Cine";
+          cinBtn.textContent = on ? "✖ Cine" : "🎬 Cine";
           if (on) window.scrollTo({ top: 0, behavior: "smooth" });
         }
 
@@ -3737,12 +3812,12 @@
         // ESC de fullscreen â†’ volver a cine
         document.addEventListener("fullscreenchange", () => {
           if (!document.fullscreenElement && cinemaMode === false) {
-            // Solo si venÃ­a de fullscreen (no de cine). La lÃ³gica ya estÃ¡ en onFSProxy.
+            // Solo si venía de fullscreen (no de cine). La lógica ya está en onFSProxy.
           }
         });
 
         const vlcBtn = document.createElement("button");
-        vlcBtn.innerHTML = "ðŸ“º VLC";
+        vlcBtn.innerHTML = "📺 VLC";
         vlcBtn.style.cssText = `background:rgba(255,102,0,0.7); color:#fff; border:none; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:11px;`;
         vlcBtn.onclick = () => openInVLC(channel.url);
 
@@ -3803,7 +3878,7 @@
         document.addEventListener("webkitfullscreenchange", onFS);
 
         const fsBtn = document.createElement("button");
-        fsBtn.innerHTML = "â›¶";
+        fsBtn.innerHTML = "⛔";
         fsBtn.title = "Pantalla completa";
         fsBtn.style.cssText = `position:absolute; top:8px; right:8px;
           background:rgba(0,0,0,0.5); color:#fff; border:none;
@@ -3826,7 +3901,7 @@
       async function playLiveWithFFmpeg(channel, myGen) {
         const playerContent = document.getElementById("playerContent");
 
-        // Cancelar fetch anterior si aÃºn estÃ¡ en vuelo
+        // Cancelar fetch anterior si aún está en vuelo
         if (_liveAbortCtrl) {
           _liveAbortCtrl.abort();
         }
@@ -3836,21 +3911,21 @@
         playerContent.innerHTML = `
           <div class="loading">
             <div class="spinner"></div>
-            <div>ðŸ“¡ Iniciando stream en vivo...</div>
+            <div>📡 Iniciando stream en vivo...</div>
             <div style="margin-top:10px; font-size:12px; color:#aaa;">
-              Preparando HLS Â· Espera ~10s...
+              Preparando HLS · Espera ~10s...
             </div>
           </div>
         `;
 
         try {
-          // â”€â”€ SUSPEND #1: fetch al servidor (puede tardar 10-20s) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── SUSPEND #1: fetch al servidor (puede tardar 10-20s) ──────────
           const response = await fetch(
             `/api/play-hls?url=${encodeURIComponent(channel.url)}&quality=${currentQuality}`,
             { signal },
           );
 
-          // Si el usuario cambiÃ³ de canal mientras esperÃ¡bamos â†’ abortar
+          // Si el usuario cambió de canal mientras esperábamos â†’ abortar
           if (myGen !== playGeneration) {
             console.log(
               `â›” Gen#${myGen} cancelada (actual: ${playGeneration})`,
@@ -3862,9 +3937,9 @@
           // Error permanente (403, etc.) â†’ mostrar sin reintentar
           if (data.error) throw new Error(data.error);
 
-          console.log(`âœ… Stream ID: ${data.stream_id} (gen#${myGen})`);
+          console.log(`✅ Stream ID: ${data.stream_id} (gen#${myGen})`);
 
-          // â”€â”€ SUSPEND #2: breve espera para que FFmpeg genere segmentos â”€â”€â”€â”€
+          // ── SUSPEND #2: breve espera para que FFmpeg genere segmentos ────
           await new Promise((r) => setTimeout(r, 1500));
 
           // Verificar de nuevo tras la espera
@@ -3873,7 +3948,7 @@
             return;
           }
 
-          // â”€â”€ Video wrapper (posiciÃ³n relativa para todos los overlays) â”€â”€â”€â”€â”€â”€
+          // ── Video wrapper (posición relativa para todos los overlays) ──────
           const wrapper = document.createElement("div");
           wrapper.id = "videoWrapper";
           wrapper.style.cssText = `
@@ -3881,20 +3956,20 @@
             border-radius:10px; overflow:hidden;
           `;
 
-          // â”€â”€ Video â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Video ────────────────────────────────────────────────────────
           const video = document.createElement("video");
           video.autoplay = true;
           video.playsInline = true;
-          // max-height se gestiona dinÃ¡micamente vÃ­a fullscreenchange (no inline fijo)
+          // max-height se gestiona dinámicamente vía fullscreenchange (no inline fijo)
           video.style.cssText =
             "width:100%; max-height:550px; display:block; cursor:pointer; background:#000;";
           video.title = "Click para pausar/reanudar";
 
-          // â”€â”€ fullscreenchange: sobreescribir inline styles vÃ­a JS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── fullscreenchange: sobreescribir inline styles vía JS ──────────
           // PROBLEMA: video.style.cssText tiene max-height:550px como inline style
           // con mayor especificidad que cualquier CSS :fullscreen. El navegador
-          // hace el wrapper 100vwÃ—100vh automÃ¡ticamente, solo necesitamos liberar
-          // la restricciÃ³n del video y hacer que llene el wrapper.
+          // hace el wrapper 100vwÃ—100vh automáticamente, solo necesitamos liberar
+          // la restricción del video y hacer que llene el wrapper.
           const applyFullscreenStyles = () => {
             const isFS = !!(
               document.fullscreenElement === wrapper ||
@@ -3913,7 +3988,7 @@
               video.style.height = "100%";
               video.style.objectFit = "contain";
               video.style.borderRadius = "0";
-              fsBtn.textContent = "âœ•";
+              fsBtn.textContent = "✖";
               fsBtn.title = "Salir pantalla completa";
             } else {
               // Restaurar estilos normales
@@ -3926,7 +4001,7 @@
               video.style.height = "";
               video.style.objectFit = "";
               video.style.borderRadius = "10px";
-              fsBtn.textContent = "â›¶";
+              fsBtn.textContent = "⛔";
               fsBtn.title = "Pantalla completa";
             }
           };
@@ -3941,7 +4016,7 @@
             applyFullscreenStyles,
           );
 
-          // â”€â”€ Barra de controles integrada (parte del wrapper del video) â”€â”€â”€â”€
+          // ── Barra de controles integrada (parte del wrapper del video) ────
           const ctrlBar = document.createElement("div");
           ctrlBar.id = "streamCtrlBar";
           ctrlBar.style.cssText = `
@@ -3962,19 +4037,19 @@
             outline:none; min-width:140px;
           `;
           qualSel.innerHTML = `
-            <option value="auto"  style="background:#151226; color:#a18cd1; font-weight:bold;">ðŸ§  IA ABR (Adaptativo)</option>
-            <option value="1080p" style="background:#111">ðŸŸ£ 1080p HD (Forzado)</option>
-            <option value="720p"  style="background:#111">ðŸŸ¡ 720p HD (Forzado)</option>
-            <option value="480p"  style="background:#111">ðŸŸ  480p SD (Forzado)</option>
-            <option value="360p"  style="background:#111">ðŸ”´ 360p Bajo (Forzado)</option>
+            <option value="auto"  style="background:#151226; color:#a18cd1; font-weight:bold;">🧠 IA ABR (Adaptativo)</option>
+            <option value="1080p" style="background:#111">🟣 1080p HD (Forzado)</option>
+            <option value="720p"  style="background:#111">🟡 720p HD (Forzado)</option>
+            <option value="480p"  style="background:#111">🟠 480p SD (Forzado)</option>
+            <option value="360p"  style="background:#111">🔴 360p Bajo (Forzado)</option>
           `;
           qualSel.value = currentQuality;
           qualSel.onchange = () => changeQuality(qualSel.value);
 
-          // BotÃ³n Modo Directo/Proxy
+          // Botón Modo Directo/Proxy
           const modeBtn = document.createElement("button");
           modeBtn.id = "modeToggle";
-          modeBtn.textContent = useProxy ? "ðŸ”„ Proxy" : "ðŸŽ¯ Directo";
+          modeBtn.textContent = useProxy ? "🔄 Proxy" : "🎯 Directo";
           const btnStyle = `
             background:rgba(255,255,255,0.12); color:#fff;
             border:1px solid rgba(255,255,255,0.3); border-radius:7px;
@@ -3991,10 +4066,10 @@
             toggleMode();
           };
 
-          // BotÃ³n Cine
+          // Botón Cine
           const cinemaBtn = document.createElement("button");
           cinemaBtn.id = "cinemaBtn";
-          cinemaBtn.textContent = cinemaMode ? "âœ• Salir Cine" : "ðŸŽ¬ Cine";
+          cinemaBtn.textContent = cinemaMode ? "✖ Salir Cine" : "🎬 Cine";
           cinemaBtn.title =
             "Modo Cine: Maximiza el player sin pantalla completa (puede cambiar de ventana)";
           cinemaBtn.style.cssText = btnStyle;
@@ -4007,10 +4082,10 @@
             toggleCinemaMode();
           };
 
-          // BotÃ³n VLC
+          // Botón VLC
           const vlcBtn = document.createElement("button");
-          vlcBtn.textContent = "ðŸ“º VLC";
-          vlcBtn.title = "Abrir en VLC (mÃ¡xima compatibilidad)";
+          vlcBtn.textContent = "📺 VLC";
+          vlcBtn.title = "Abrir en VLC (máxima compatibilidad)";
           vlcBtn.style.cssText = btnStyle;
           vlcBtn.onmouseenter = () =>
             (vlcBtn.style.background = "rgba(255,255,255,0.22)");
@@ -4021,9 +4096,9 @@
             openInVLC(channel.url);
           };
 
-          // BotÃ³n pantalla completa real (delegado al video)
+          // Botón pantalla completa real (delegado al video)
           const fsBtn = document.createElement("button");
-          fsBtn.textContent = "â›¶";
+          fsBtn.textContent = "⛔";
           fsBtn.title = "Pantalla completa";
           fsBtn.style.cssText = btnStyle + "font-size:14px;";
           fsBtn.onmouseenter = () =>
@@ -4036,7 +4111,7 @@
             else wrapper.requestFullscreen();
           };
 
-          // Indicador EN VIVO + tiempo transcurrido (ocupa el espacio entre botones y â›¶)
+          // Indicador EN VIVO + tiempo transcurrido (ocupa el espacio entre botones y ⛔)
           const liveIndicator = document.createElement("div");
           liveIndicator.style.cssText =
             "margin-left:auto; display:flex; align-items:center; gap:10px;";
@@ -4111,17 +4186,17 @@
           video.addEventListener("canplay", () => clearTimeout(playTimeout));
           video.addEventListener("playing", () => {
             clearTimeout(playTimeout);
-            console.log("â–¶ï¸ LIVE reproduciendo");
+            console.log("▶️ LIVE reproduciendo");
           });
           video.addEventListener("error", () => {
             clearTimeout(playTimeout);
             showError("Error al reproducir - Usa VLC", channel);
           });
 
-          // â”€â”€ HLS.js â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          // Ãšltima comprobaciÃ³n justo antes de crear la instancia HLS.
-          // Este es el punto crÃ­tico: si hay otra gen mÃ¡s nueva, no creamos
-          // un HLS huÃ©rfano que reproducirÃ­a audio/video en segundo plano.
+          // ── HLS.js ──────────────────────────────────────────────────────
+          // Ãšltima comprobación justo antes de crear la instancia HLS.
+          // Este es el punto crítico: si hay otra gen más nueva, no creamos
+          // un HLS huérfano que reproduciría audio/video en segundo plano.
           if (myGen !== playGeneration) {
             console.log(`â›” Gen#${myGen} cancelada antes de crear HLS`);
             if (hls) {
@@ -4137,16 +4212,16 @@
               debug: false,
               enableWorker: true,
               lowLatencyMode: false,
-              // â”€â”€ Latencia live edge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Latencia live edge ────────────────────────────────────────────
               liveSyncDurationCount: 10, // ~10s con segs de 1s
               liveMaxLatencyDurationCount: 20, // saltar al edge si > 6s de retraso
               maxLiveSyncPlaybackRate: 1.05, // catch-up suave (1.3Ã— no distorsiona audio)
-              // â”€â”€ Buffer ajustado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Buffer ajustado ──────────────────────────────────────────────
               maxBufferLength: 20, // buffer suficiente para sostener 10s
               maxMaxBufferLength: 30,
               maxBufferSize: 20 * 1000 * 1000,
               backBufferLength: 10,
-              // â”€â”€ Resiliencia ante reinicios FFmpeg (watchdog) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── Resiliencia ante reinicios FFmpeg (watchdog) ─────────────────
               fragLoadingMaxRetry: 6,
               manifestLoadingMaxRetry: 4,
               levelLoadingMaxRetry: 4,
@@ -4180,7 +4255,7 @@
                     clearTimeout(playTimeout);
                     hls.destroy();
                     hls = null;
-                    showError(`Stream caÃ­do: ${errData.details}`, channel);
+                    showError(`Stream caído: ${errData.details}`, channel);
                     return;
                   }
                   _fragRetries++;
@@ -4207,20 +4282,20 @@
           }
         } catch (error) {
           if (error.name === "AbortError") return; // canal cambiado â†’ ignorar
-          console.error("âŒ Error:", error);
+          console.error("❌ Error:", error);
           clearTimeout(playTimeout);
           showError(`Error: ${error.message}`, channel);
         }
       }
 
-      // â”€â”€ Modo Cine: maximiza el player sin usar fullscreen API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Modo Cine: maximiza el player sin usar fullscreen API ─────────────
       function toggleCinemaMode() {
         cinemaMode = !cinemaMode;
         document.body.classList.toggle("cinema-mode", cinemaMode);
 
-        // Actualizar botÃ³n
+        // Actualizar botón
         const btn = document.getElementById("cinemaBtn");
-        if (btn) btn.textContent = cinemaMode ? "âœ• Salir Cine" : "ðŸŽ¬ Cine";
+        if (btn) btn.textContent = cinemaMode ? "✖ Salir Cine" : "🎬 Cine";
 
         if (cinemaMode) {
           // Scroll al top para que el player ocupe toda la pantalla visible
@@ -4237,8 +4312,8 @@
         // El modo aplica al stream actual (se reinicia con la nueva config)
         useProxy = !useProxy;
         const btn = document.getElementById("modeToggle");
-        if (btn) btn.textContent = useProxy ? "ðŸ”„ Proxy" : "ðŸŽ¯ Directo";
-        console.log(`ðŸ”„ Modo: ${useProxy ? "PROXY" : "DIRECTO"}`);
+        if (btn) btn.textContent = useProxy ? "🔄 Proxy" : "🎯 Directo";
+        console.log(`🔄 Modo: ${useProxy ? "PROXY" : "DIRECTO"}`);
         if (currentChannel) {
           retryCount = 0;
           playChannel(currentChannel);
@@ -4247,7 +4322,7 @@
 
       function changeQuality(newQuality) {
         if (newQuality === currentQuality) return;
-        console.log(`ðŸ“¶ Calidad: ${currentQuality} â†’ ${newQuality}`);
+        console.log(`📶 Calidad: ${currentQuality} â†’ ${newQuality}`);
         currentQuality = newQuality;
         if (hls) {
           hls.destroy();
@@ -4266,7 +4341,7 @@
 
         setTimeout(() => {
           alert(
-            'Si VLC no se abriÃ³:\n\n1. Copia la URL (botÃ³n "Copiar URL")\n2. Abre VLC\n3. Media â†’ Abrir ubicaciÃ³n de red\n4. Pega y Play',
+            'Si VLC no se abrió:\n\n1. Copia la URL (botón "Copiar URL")\n2. Abre VLC\n3. Media â†’ Abrir ubicación de red\n4. Pega y Play',
           );
         }, 1000);
       }
@@ -4276,7 +4351,7 @@
           .writeText(url)
           .then(() => {
             alert(
-              "âœ… URL copiada\n\nPÃ©gala en VLC:\nMedia â†’ Abrir ubicaciÃ³n de red",
+              "✅ URL copiada\n\nPégala en VLC:\nMedia â†’ Abrir ubicación de red",
             );
           })
           .catch((err) => {
@@ -4297,10 +4372,10 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
 
-        alert("âœ… M3U descargado\n\nAbre el archivo con VLC");
+        alert("✅ M3U descargado\n\nAbre el archivo con VLC");
       }
 
-      // â”€â”€ Toast notification (no intrusivo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Toast notification (no intrusivo) ──────────────────────────────────
       function showToast(msg, duration = 3000) {
         let toast = document.getElementById("iptv-toast");
         if (!toast) {
@@ -4328,7 +4403,7 @@
         const playerContent = document.getElementById("playerContent");
         playerContent.innerHTML = `
                     <div class="loading">
-                        <div style="color: #ff6b6b; margin-bottom: 15px; font-size: 18px;">âŒ ${message}</div>
+                        <div style="color: #ff6b6b; margin-bottom: 15px; font-size: 18px;">❌ ${message}</div>
                         <div style="color: #fff; font-size: 14px; margin-bottom: 20px;">
                             ${channel.name}
                         </div>
@@ -4337,7 +4412,7 @@
                               /'/g,
                               "\\'",
                             )}')">
-                                ðŸ“º Abrir en VLC
+                                📺 Abrir en VLC
                             </button>
                             <button class="control-btn" onclick="copyUrl('${channel.url.replace(
                               /'/g,
@@ -4349,7 +4424,7 @@
                               /'/g,
                               "\\'",
                             )}', '${channel.url.replace(/'/g, "\\'")}')">
-                                ðŸ’¾ Descargar M3U
+                                💾 Descargar M3U
                             </button>
                             <button class="control-btn" onclick="playChannel(currentChannel)">
                                 â†» Reintentar
@@ -4366,13 +4441,13 @@
         const playerContent = document.getElementById("playerContent");
         playerContent.innerHTML = `
                     <div class="loading">
-                        <div style="color: #ff6b6b; margin-bottom: 15px; font-size: 18px;">âŒ ${message}</div>
+                        <div style="color: #ff6b6b; margin-bottom: 15px; font-size: 18px;">❌ ${message}</div>
                         <div style="color: #fff; font-size: 14px; margin-bottom: 20px;">
                             Modo actual: ${useProxy ? "PROXY" : "DIRECTO"}
                         </div>
                         <div class="channel-controls">
                             <button class="control-btn" onclick="toggleMode(); playChannel(currentChannel)">
-                                ðŸ”„ Probar modo ${useProxy ? "DIRECTO" : "PROXY"}
+                                🔄 Probar modo ${useProxy ? "DIRECTO" : "PROXY"}
                             </button>
                             <button class="control-btn" onclick="retryCount = 0; playChannel(currentChannel)">
                                 â†» Reintentar
@@ -4381,7 +4456,7 @@
                               /'/g,
                               "\\'",
                             )}')">
-                                ðŸ“º Abrir en VLC
+                                📺 Abrir en VLC
                             </button>
                             <button class="control-btn" onclick="copyUrl('${channel.url.replace(
                               /'/g,
@@ -4393,7 +4468,7 @@
                               /'/g,
                               "\\'",
                             )}', '${channel.url.replace(/'/g, "\\'")}')">
-                                ðŸ’¾ Descargar M3U
+                                💾 Descargar M3U
                             </button>
                         </div>
                         <div class="debug-info" style="margin-top: 15px;">
@@ -4411,44 +4486,45 @@
           return;
         }
 
-        console.log(`ðŸ“¥ Descargando M3U del grupo: ${group}`);
+        console.log(`📥 Descargando M3U del grupo: ${group}`);
 
         const url = `/api/download-group?group=${encodeURIComponent(group)}`;
         window.open(url, "_blank");
 
         setTimeout(() => {
           alert(
-            `âœ… Descargando M3U del grupo: ${group}\n\nAbre el archivo con VLC cuando termine la descarga.`,
+            `✅ Descargando M3U del grupo: ${group}\n\nAbre el archivo con VLC cuando termine la descarga.`,
           );
         }, 500);
       }
 
       window.addEventListener("DOMContentLoaded", async () => {
-        // Cargar configuraciÃ³n de auto-refresh
+        // Cargar configuración de auto-refresh
         await loadAutoRefreshConfig();
         restartAutoRefreshTimer();
 
-        // Actualizar gestor de cachÃ© al iniciar
+        // Actualizar gestor de caché al iniciar
         updateCacheManager();
 
-        // Auto-cargar Ãºltima playlist desde cachÃ©
+        // Auto-cargar última playlist desde caché
         const index = await getCacheIndex();
         if (index.length > 0) {
-          // Ordenar por timestamp y obtener la mÃ¡s reciente
+          // Ordenar por timestamp y obtener la más reciente
           index.sort((a, b) => b.timestamp - a.timestamp);
           const mostRecent = index[0];
 
-          console.log(`ðŸš€ Auto-cargando Ãºltima playlist: ${mostRecent.name}`);
-          console.log(`   ðŸ“¦ ${mostRecent.totalChannels} canales totales`);
+          console.log(`🚀 Auto-cargando última playlist: ${mostRecent.name}`);
+          console.log(`   📦 ${mostRecent.totalChannels} canales totales`);
           console.log(
-            `   ðŸ“¡ ${mostRecent.live} en vivo | ðŸ“º ${mostRecent.series} series | ðŸŽ¬ ${mostRecent.movies} pelÃ­culas`,
+            `   📡 ${mostRecent.live} en vivo | 📺 ${mostRecent.series} series | 🎬 ${mostRecent.movies} películas`,
           );
 
-          // Cargar datos desde cachÃ©
+          // Cargar datos desde caché
           loadPlaylistFromCache(mostRecent.id);
+          initCacheUpdateListener();
         } else {
           console.log(
-            "ðŸ’¡ No hay playlists en cachÃ© - Carga una URL M3U para comenzar",
+            "💡 No hay playlists en caché - Carga una URL M3U para comenzar",
           );
         }
       });
