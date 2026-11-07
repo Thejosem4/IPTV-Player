@@ -2,6 +2,29 @@
 
 All notable changes will be documented in this file.
 
+## [7.3] - 2026-11-07
+
+### Added
+- **In-Memory HLS Ring Buffer**: `handle_hls_file()` now caches the last 12 `.ts` segments in an `OrderedDict` per stream. Cache hits eliminate disk I/O entirely, reducing segment serve latency from 15–45ms to <0.5ms.
+- **Real Network Telemetry in AI**: `ThrottleDetector` now has `record_latency(url, ms)`, `get_latency(url)`, `get_speed(url)`, and `_probe_domain_latency(domain)`. RTT is measured via TCP socket connect; download speed tracked as EMA per domain. Replaces the three hardcoded `latency=0` callsites that made the AI blind to real network conditions.
+- **Range / Seeking Support for VOD**: `proxy_parallel_download()` now parses the browser's `Range: bytes=X-Y` header and responds with `206 Partial Content` + `Content-Range`. Seeking in VOD streams no longer restarts from byte 0.
+- **Auto-Activation of Parallel VOD**: Parallel multi-connection download is now enabled automatically for files >2MB that support HTTP Range. No longer requires the `?parallel=true` query parameter that the frontend never sent.
+
+### Changed
+- **`async_vod_downloader.py` fully rewritten**: `PieceBuffer` class removed (was accumulating GB in RAM). New architecture uses a bounded `queue.Queue(maxsize=16)` as a sliding window between async producer and sync writer. Max RAM per stream: ~8MB regardless of file size.
+- **`download_and_stream()` new signature**: Now keyword-only: `(url, wfile, start_byte=0, end_byte=None, content_length=None, num_conn=8, ai_headers_func=None, ai_jitter_func=None, chunk_size=…)`. Full Range support for seeks.
+- **`predict_optimal_config()` signature**: Parameters `latency` and `speed_kbps` now default to `None` and are auto-resolved from `throttle_detector` telemetry when not explicitly provided.
+- **HLS segment wait granularity**: Poll interval reduced from `sleep(0.1)×30` to `sleep(0.05)×60` (same 3s window, finer response to late segments).
+- **Small range requests (<2MB) delegated**: Moov atom / metadata fetches in VOD are routed through `proxy_range_request()` to avoid parallel-download overhead.
+- **Server banner**: Updated to v7.3.
+
+### Fixed
+- **AI always received `latency=0`**: Three separate callsites in `iptv-server.py` hardcoded `latency=0`; replaced with auto-resolution via `throttle_detector.get_latency(url)`.
+- **`uuid` import scope**: `import uuid` moved to module-level to prevent potential `NameError` in async paths.
+- **Hardcoded `C:/IPTV_Cache/` paths**: Two occurrences replaced with `os.path.join(CACHE_DIR, …)` and `tempfile.gettempdir()` for cross-platform correctness.
+
+---
+
 ## [7.2] - 2026-06-06
 
 ### Added

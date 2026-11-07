@@ -235,7 +235,7 @@ def fetch_with_retry(
             from iptv_ai_core import ai_optimizer, throttle_detector
             domain = throttle_detector._domain(url)
             current_spd = throttle_detector.expected_speeds.get(domain, 3000.0)
-            cfg = ai_optimizer.predict_optimal_config(url, 1.0, latency=0, speed_kbps=current_spd, required_bitrate=3000.0)
+            cfg = ai_optimizer.predict_optimal_config(url, 1.0, speed_kbps=current_spd, required_bitrate=3000.0)
             # Auto-Healing Triggered: Usa directamente el delay sin dividir (hasta 3s)
             retry_delay_s = max(0.15, float(cfg.get("retry_delay", 0.5)))
             timeout_s = max(timeout_s, int(retry_delay_s * 5 + 5))
@@ -1543,17 +1543,18 @@ class IPTVHandler(SimpleHTTPRequestHandler):
 
             video_exts = {"mp4", "mkv", "avi", "m4v", "mov", "wmv", "flv"}
             if ext in video_exts:
-                use_parallel = params.get("parallel", ["false"])[0].lower() == "true"
-                # Tamaño total conocido por HEAD (puede ser 0 si server no lo dio)
                 known_size = int(content_length) if content_length.isdigit() else 0
-                if use_parallel:
-                    print(f"    Modo paralelo")
+                accepts_range = (accept_ranges.lower() != "none" or known_size > 0)
+                force_sync = params.get("parallel", ["true"])[0].lower() == "false"
+
+                # Auto-VOD Paralelo v7.3: Si el upstream soporta Range y el video es > 2MB,
+                # se activa automáticamente la aceleración asíncrona paralela
+                if accepts_range and known_size > 2 * 1024 * 1024 and not force_sync:
+                    print(f"    Modo Paralelo Asíncrono (Auto VOD v7.3) → {ext.upper()} | size={known_size:,} bytes")
                     print(f"{'='*60}\n")
-                    self.proxy_parallel_download(url)
+                    self.proxy_parallel_download(url, known_size=known_size, content_type=content_type)
                 else:
-                    print(
-                        f"    Proxy directo → {ext.upper()} | size={known_size:,} bytes"
-                    )
+                    print(f"    Proxy directo → {ext.upper()} | size={known_size:,} bytes")
                     print(f"{'='*60}\n")
                     self.proxy_range_request(url, known_size=known_size)
             else:
@@ -1672,70 +1673,83 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             except:
                 pass
 
-    def proxy_parallel_download(self, url):
-        """Descarga adaptativa con múltiples conexiones paralelas"""
+    def proxy_parallel_download(self, url, known_size=0, content_type="video/mp4"):
+        """Descarga adaptativa con múltiples conexiones paralelas asíncronas y soporte de Range (v7.3)"""
         try:
             print(f"\n{'='*60}")
-            print(f" DESCARGA PARALELA ADAPTATIVA")
+            print(f" DESCARGA PARALELA ASÍNCRONA VOD (v7.3)")
 
-            parsed = urllib.parse.urlparse(url)
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            content_length = known_size
+            if content_length <= 0:
+                parsed = urllib.parse.urlparse(url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                req = urllib.request.Request(url, method="HEAD")
+                req.add_header(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                )
+                req.add_header("Referer", f"{base_url}/")
 
-            req = urllib.request.Request(url, method="HEAD")
-            req.add_header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            req.add_header("Referer", f"{base_url}/")
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    content_length = int(r.headers.get("Content-Length", 0))
+                    accept_ranges = r.headers.get("Accept-Ranges", "none")
+                    content_type = r.headers.get("Content-Type", content_type)
 
-            with urllib.request.urlopen(req, timeout=10) as r:
-                content_length = int(r.headers.get("Content-Length", 0))
-                accept_ranges = r.headers.get("Accept-Ranges", "none")
-
-            if accept_ranges == "none" or content_length == 0:
-                print(f"    Sin Range Requests → fallback a proxy normal")
-                self.proxy_range_request(url)
-                return
+                if accept_ranges == "none" or content_length == 0:
+                    print(f"    Sin Range Requests → fallback a proxy normal")
+                    self.proxy_range_request(url, known_size=content_length)
+                    return
 
             size_mb = content_length / 1024 / 1024
-            
-            #  IA OPTIMIZER V2: Medición de latencia y predicción profunda
-            latency_ms = 0
+
+            # ── Parsear Range Header del Reproductor (Seeking) ──────────────────
+            range_header = self.headers.get("Range", None)
+            start_b = 0
+            end_b = content_length - 1
+            is_partial = False
+
+            if range_header and range_header.startswith("bytes="):
+                is_partial = True
+                raw_r = range_header.replace("bytes=", "").strip()
+                parts = raw_r.split("-")
+                if parts[0]:
+                    start_b = int(parts[0])
+                if len(parts) > 1 and parts[1]:
+                    end_b = int(parts[1])
+
+            part_len = end_b - start_b + 1
+
+            # Si el reproductor solicita solo un fragmento mínimo (< 2MB, ej. cabeceras moov atom)
+            # delegar a proxy_range_request para no sobrecargar el pool
+            if is_partial and part_len < 2 * 1024 * 1024:
+                self.proxy_range_request(url, known_size=content_length)
+                return
+
+            # ── IA OPTIMIZER: Predicción profunda con telemetría real ───────────
             if HAS_AI:
-                # Medir latencia rápida al servidor
-                t_lat_0 = time.time()
-                try:
-                    urllib.request.urlopen(url, timeout=1).close()
-                    latency_ms = (time.time() - t_lat_0) * 1000
-                except: latency_ms = 500
-                
-                ai_config = ai_optimizer.predict_optimal_config(url, size_mb, latency_ms)
-                num_conn = ai_config["num_conn"]
-                print(f"    IA v7.2 Sugirió: {num_conn} conns | Prefetch: {ai_config['prefetch_count']} | Latencia: {latency_ms:.0f}ms")
+                from iptv_ai_core import ai_optimizer, throttle_detector
+                ai_config = ai_optimizer.predict_optimal_config(url, size_mb)
+                num_conn = ai_config.get("num_conn", 8)
+                if size_mb > 300 and ai_config.get("stall_prob", 0) < 0.15:
+                    num_conn = min(16, max(num_conn, 8))
+                print(f"    IA v7.3 Sugirió: {num_conn} conns | Prefetch: {ai_config.get('prefetch_count', 4)} | Stall Prob: {ai_config.get('stall_prob', 0):.2f}")
             else:
-                # Fallback tradicional
                 if size_mb < 50: num_conn = 4
                 elif size_mb < 200: num_conn = 8
                 elif size_mb < 500: num_conn = 12
                 else: num_conn = 16
 
-            print(f"    Tamaño: {size_mb:.1f} MB → {num_conn} conexiones")
+            num_conn = max(2, min(num_conn, 16))
+            print(f"    Rango: bytes {start_b}-{end_b}/{content_length} ({part_len/1024/1024:.1f} MB) → {num_conn} conns AIOHTTP")
 
-            # Protección contra num_conn muy bajo (extreme_starvation → num_conn=2)
-            # Evitar chunk_size=0 o fragmentos inválidos con archivos pequeños
-            num_conn = max(1, num_conn)  # Nunca 0 conexiones
-            chunk_size = content_length // num_conn
-            # Si el chunk resultante es demasiado pequeño (<1KB), reducir conexiones
-            if chunk_size < 1024 and num_conn > 1:
-                num_conn = max(1, content_length // 1024)
-                chunk_size = content_length // num_conn
-                print(f"    Ajuste protectivo: archivo pequeño → {num_conn} conexión(es)")
-            
-            print(f"    Tamaño: {size_mb:.1f} MB → {num_conn} conexiones (AIOHTTP STREAM)")
+            if is_partial:
+                self.send_response(206)
+                self.send_header("Content-Range", f"bytes {start_b}-{end_b}/{content_length}")
+            else:
+                self.send_response(200)
 
-            self.send_response(200)
-            self.send_header("Content-Type", "video/mp4")
-            self.send_header("Content-Length", str(content_length))
+            self.send_header("Content-Type", content_type or "video/mp4")
+            self.send_header("Content-Length", str(part_len))
             self.send_header("Accept-Ranges", "bytes")
             self.end_headers()
 
@@ -1749,27 +1763,31 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
-            import time
             t0 = time.time()
             import async_vod_downloader
 
-            # Delega a asyncio. Escribe progresivamente al socket y bloquea hasta terminar.
-            try:
-                async_vod_downloader.download_and_stream(
-                    url, num_conn, content_length, self.wfile,
-                    ai_headers_func=ai_headers_func, ai_jitter_func=ai_jitter_func
-                )
-            except Exception as e:
-                print(f"    Cliente desconectó o error en stream: {e}")
+            # Streaming asíncrono con Bounded Buffer (Memory Safe)
+            bytes_streamed = async_vod_downloader.download_and_stream(
+                url=url,
+                wfile=self.wfile,
+                start_byte=start_b,
+                end_byte=end_b,
+                content_length=content_length,
+                num_conn=num_conn,
+                ai_headers_func=ai_headers_func,
+                ai_jitter_func=ai_jitter_func
+            )
 
             total_elapsed = time.time() - t0
-            avg_speed_kbps = (content_length / 1024) / max(total_elapsed, 0.1)
-            print(f"    {size_mb:.1f} MB transmitidos en {total_elapsed:.1f}s (avg {avg_speed_kbps:.0f} KB/s)")
-
-            try:
-                log_request_speed(url, content_length, total_elapsed)
-            except:
-                pass
+            if bytes_streamed > 0 and total_elapsed > 0:
+                avg_speed_kbps = (bytes_streamed / 1024.0) / total_elapsed
+                print(f"    {bytes_streamed/1024/1024:.1f} MB transmitidos en {total_elapsed:.1f}s (avg {avg_speed_kbps:.0f} KB/s)")
+                if HAS_AI:
+                    from iptv_ai_core import throttle_detector
+                    throttle_detector.record_speed(url, avg_speed_kbps)
+                try:
+                    log_request_speed(url, bytes_streamed, total_elapsed)
+                except: pass
             
             if HAS_AI:
                 try:
@@ -2452,7 +2470,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 from iptv_ai_core import ai_optimizer, throttle_detector
                 size_est = (brkbps * hls_time) / 8000.0 if brkbps else 2.0
                 current_spd = throttle_detector.expected_speeds.get(throttle_detector._domain(url), brkbps if brkbps else 2500)
-                ai_config_data = ai_optimizer.predict_optimal_config(url, size_est, latency=0, speed_kbps=current_spd, required_bitrate=brkbps if brkbps else 2500) if HAS_AI else None
+                ai_config_data = ai_optimizer.predict_optimal_config(url, size_est, speed_kbps=current_spd, required_bitrate=brkbps if brkbps else 2500) if HAS_AI else None
                 
                 ffmpeg_cmd = self._build_ffmpeg_cmd(url, temp_dir, transcode_video, quality_profile, hls_time, 0, ai_config_data)
                 print(f"    Iniciando FFmpeg...")
@@ -2600,25 +2618,48 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                             active_streams[stream_id]["segs_servidos_set"] = set()
                         active_streams[stream_id]["segs_servidos_set"].add(filename)
                         
+                    if "segment_cache" not in active_streams[stream_id]:
+                        active_streams[stream_id]["segment_cache"] = collections.OrderedDict()
+                    cache = active_streams[stream_id]["segment_cache"]
                     temp_dir = active_streams[stream_id]["temp_dir"]
+                    stream_url = active_streams[stream_id].get("url", "")
                 else:
                     self.send_response(404)
                     self.end_headers()
                     return
 
-            file_path = os.path.join(temp_dir, filename)
+            data = None
+            if filename in cache:
+                data = cache[filename]
 
-            if not os.path.exists(file_path):
-                # Esperar hasta 3s por el archivo — segmentos nuevos pueden tardar
-                # Importante para .ts recientes y para playlist.m3u8 en inicio
-                for _ in range(30):
-                    time.sleep(0.1)
-                    if os.path.exists(file_path):
-                        break
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-                    return
+            if data is None:
+                file_path = os.path.join(temp_dir, filename)
+                if not os.path.exists(file_path):
+                    # Esperar hasta 3s por el archivo con intervalo reducido (0.05s) para menor latencia inicial
+                    for _ in range(60):
+                        time.sleep(0.05)
+                        if os.path.exists(file_path):
+                            break
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+
+                try:
+                    with open(file_path, "rb") as f:
+                        data = f.read()
+                except Exception:
+                    time.sleep(0.05)
+                    with open(file_path, "rb") as f:
+                        data = f.read()
+
+                # Guardar en Ring Buffer RAM si es .ts para servir en <0.2ms a clientes concurrentes
+                if filename.endswith(".ts") and data:
+                    with streams_lock:
+                        if stream_id in active_streams:
+                            cache[filename] = data
+                            if len(cache) > 12:
+                                cache.popitem(last=False)
 
             if filename.endswith(".m3u8"):
                 ct = "application/vnd.apple.mpegurl"
@@ -2627,14 +2668,23 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             else:
                 ct = "application/octet-stream"
 
-            with open(file_path, "rb") as f:
-                data = f.read()
-
             self.send_response(200)
             self.send_header("Content-Type", ct)
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache, no-store")
             self.end_headers()
+
+            t0_w = time.time()
             self.wfile.write(data)
+            dt_w = time.time() - t0_w
+
+            if filename.endswith(".ts") and dt_w > 0 and len(data) > 0 and stream_url:
+                if HAS_AI:
+                    try:
+                        from iptv_ai_core import throttle_detector
+                        spd = (len(data) / 1024.0) / dt_w
+                        throttle_detector.record_speed(stream_url, spd)
+                    except: pass
 
         except Exception as e:
             print(f" Error HLS: {e}")

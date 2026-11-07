@@ -410,9 +410,17 @@ class IPTVEvolutionaryBrain:
         return best_quality
 
 
-    def predict_optimal_config(self, url, size_mb, latency=0, speed_kbps=0.0, required_bitrate=0.0):
-        """Predice la mejor configuración basándose en el estado del sistema, red y MEMOROptimizer de fallos"""
+    def predict_optimal_config(self, url, size_mb, latency=None, speed_kbps=None, required_bitrate=None):
+        """Predice la mejor configuración basándose en telemetría de red real, estado del sistema y memoria histórica"""
         with self.lock:
+            # Resolver telemetría real por dominio si no viene provista explícitamente
+            if latency is None or latency <= 0:
+                latency = throttle_detector.get_latency(url)
+            if speed_kbps is None or speed_kbps <= 0:
+                speed_kbps = throttle_detector.get_speed(url)
+            if required_bitrate is None or required_bitrate <= 0:
+                required_bitrate = 2500.0
+
             sys_cpu = psutil.cpu_percent()
             sys_ram = psutil.virtual_memory().percent
             
@@ -524,7 +532,7 @@ class IPTVEvolutionaryBrain:
                 "stall_prob": ai_stall_prob
             }
             
-            reason = f"Predicción {engine_used or 'IA'} basada en Latencia {latency:.0f}ms y Carga {sys_cpu}%"
+            reason = f"Predicción {engine_used or 'IA'} basada en Latencia {latency:.0f}ms, Velocidad {speed_kbps:.0f}KB/s y Carga {sys_cpu}%"
             if getattr(self, 'consecutive_errors', 0) > 2:
                 config["num_conn"] = max(2, config["num_conn"] // 2)
                 reason += " | PENALIZACIÓN errores seguidos"
@@ -929,6 +937,7 @@ class ThrottleDetector:
     def __init__(self):
         self.lock            = threading.Lock()
         self.speed_windows   = {}   # domain → deque de velocidades KB/s
+        self.latency_windows = {}   # domain → deque de latencias RTT en ms
         self.piece_counts    = {}   # domain → n piezas activo
         self.throttle_states = {}   # domain → {"throttled": bool, "since": timestamp}
         self.expected_speeds = {}   # domain → velocidad esperada (promedio largo plazo)
@@ -939,6 +948,8 @@ class ThrottleDetector:
 
     def record_speed(self, url: str, speed_kbps: float):
         """Registra una medición de velocidad para el dominio de la URL."""
+        if speed_kbps <= 0:
+            return
         domain = self._domain(url)
         with self.lock:
             if domain not in self.speed_windows:
@@ -953,6 +964,52 @@ class ThrottleDetector:
                 self.expected_speeds[domain] = (
                     alpha * speed_kbps + (1 - alpha) * self.expected_speeds[domain]
                 )
+
+    def record_latency(self, url: str, latency_ms: float):
+        """Registra una medición de latencia RTT (ms) real para el dominio."""
+        if latency_ms <= 0:
+            return
+        domain = self._domain(url)
+        with self.lock:
+            if domain not in self.latency_windows:
+                self.latency_windows[domain] = collections.deque(maxlen=self.WINDOW_SIZE)
+            self.latency_windows[domain].append(float(latency_ms))
+
+    def get_latency(self, url: str) -> float:
+        """Retorna la latencia estimada en ms para el dominio (mediana o probe socket)."""
+        domain = self._domain(url)
+        with self.lock:
+            win = self.latency_windows.get(domain)
+            if win and len(win) > 0:
+                s = sorted(win)
+                return float(s[len(s) // 2])
+
+        # Si no hay historial, medimos latencia TCP de socket sin bloquear
+        lat = self._probe_domain_latency(domain)
+        if lat > 0:
+            self.record_latency(url, lat)
+            return lat
+        return 65.0  # Baseline realista de conexión IPTV
+
+    def get_speed(self, url: str) -> float:
+        """Retorna la velocidad esperada en KB/s."""
+        domain = self._domain(url)
+        with self.lock:
+            return float(self.expected_speeds.get(domain, 3500.0))
+
+    def _probe_domain_latency(self, domain: str) -> float:
+        """Mide latencia TCP (socket connect) hacia el host en milisegundos."""
+        try:
+            import socket
+            host = domain.split(":")[0]
+            port = int(domain.split(":")[1]) if ":" in domain else 80
+            t0 = time.time()
+            s = socket.create_connection((host, port), timeout=0.35)
+            dt = (time.time() - t0) * 1000.0
+            s.close()
+            return round(dt, 1)
+        except Exception:
+            return 0.0
 
     def analyze(self, url: str, current_speed_kbps: float) -> dict:
         """
