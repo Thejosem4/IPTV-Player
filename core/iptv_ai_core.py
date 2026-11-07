@@ -22,9 +22,30 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 import joblib
 import threading
+import queue
 import logging
 import collections
 import sys
+
+try:
+    import onnxruntime as ort
+    HAS_ONNX = True
+except ImportError:
+    HAS_ONNX = False
+
+try:
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
+    HAS_SKL2ONNX = True
+except ImportError:
+    HAS_SKL2ONNX = False
+
+try:
+    import lightgbm as lgb
+    from sklearn.multioutput import MultiOutputRegressor
+    HAS_LIGHTGBM = True
+except ImportError:
+    HAS_LIGHTGBM = False
 
 # Re-configurar logger para consola + archivo
 ai_logger = logging.getLogger("IPTV_AI")
@@ -54,26 +75,89 @@ LOG_DIR = os.path.join(BASE_DIR, 'logs')
 DB_PATH = os.path.join(CACHE_DIR, "iptv_permanent_memory.db")
 GOLD_DB_PATH = os.path.join(CACHE_DIR, "iptv_gold_memory.db")
 MODEL_PATH = os.path.join(CACHE_DIR, "iptv_dynamic_brain.pkl")
+LIGHTGBM_MODEL_PATH = os.path.join(CACHE_DIR, "iptv_lgbm_brain.pkl")
+ONNX_MODEL_PATH = os.path.join(CACHE_DIR, "iptv_dynamic_brain.onnx")
 CONFIG_PATH = os.path.join(CACHE_DIR, "brain_config.json")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
 class IPTVEvolutionaryBrain:
+    # Número de salidas del vector Y en v6.1:
+    # [conn, buf_log, delay, pref, threads, preset, reconnect, stall_prob]
+    EXPECTED_N_OUTPUTS = len([2, 0, 1.5, 40, 4, 0, 1, 0.9])
+    # Número de features de entrada en v6.1 (se eliminó el sesgo 0.5 constante,
+    # reemplazado por la hora del día normalizada: hour/23.0)
+    EXPECTED_N_FEATURES = 7  # log_size, cpu, ram, sqrt_lat, ratio, cpu_interaction, hour_norm
+
     def __init__(self):
         self.lock = threading.Lock()
+        self.db_queue = queue.Queue()
         self.init_db()
         self.load_config() # This sets self.config
         self.scaler_x = self.load_scaler_x()
         self.scaler_y = self.load_scaler_y()
+        self.lgb_model = self.load_lgbm_model()
         self.model = self.load_model()
+        self.onnx_session = self.load_onnx_model()
         self.error_history = []
         self.experience_count = self.get_total_experiences()
         self._last_retrain_count = 0
+        
+        # Hilo daemon para escrituras asíncronas en SQLite (0ms latencia para el player)
+        self._db_writer_thread = threading.Thread(target=self._db_writer_worker, daemon=True)
+        self._db_writer_thread.start()
+
         # Auto-importar memoria Kaggle si la BD local está vacía o escasa
         if self.experience_count < 1000:
             self.experience_count = self.import_gold_memory()
         self.start_auto_retraining()
+
+    def _db_writer_worker(self):
+        """Worker thread background que procesa inserciones en la BD sin bloquear hilos de streaming"""
+        while True:
+            try:
+                item = self.db_queue.get()
+                if item is None:
+                    break
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO experiences 
+                    (timestamp, url_domain, full_url, channel_name, size_mb, hour, day_of_week, cpu, ram, latency, 
+                     target_num_conn, target_buffer, target_delay, target_prefetch, actual_speed, success, is_critical)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', item)
+                conn.commit()
+                conn.close()
+                self.db_queue.task_done()
+            except Exception as e:
+                ai_logger.error(f"Error en _db_writer_worker: {e}")
+
+    def load_onnx_model(self):
+        """Carga la sesión de inferencia de ONNX Runtime si está disponible"""
+        if HAS_ONNX and os.path.exists(ONNX_MODEL_PATH):
+            try:
+                sess = ort.InferenceSession(ONNX_MODEL_PATH, providers=['CPUExecutionProvider'])
+                ai_logger.info(" Optimizer: Modelo ONNX cargado exitosamente para inferencia ultrarrápida (<50μs)")
+                return sess
+            except Exception as e:
+                ai_logger.warning(f" Optimizer: No se pudo cargar modelo ONNX ({e}). Usando fallback Scikit-Learn.")
+        return None
+
+    def export_onnx_model(self):
+        """Exporta el modelo Scikit-Learn a ONNX Runtime si skl2onnx está instalado"""
+        if not HAS_SKL2ONNX or self.model is None:
+            return
+        try:
+            initial_type = [('float_input', FloatTensorType([None, 7]))]
+            onnx_model = convert_sklearn(self.model, initial_types=initial_type)
+            with open(ONNX_MODEL_PATH, "wb") as f:
+                f.write(onnx_model.SerializeToString())
+            ai_logger.info(f" Optimizer: Modelo ONNX exportado guardado en {ONNX_MODEL_PATH}")
+            self.onnx_session = self.load_onnx_model()
+        except Exception as e:
+            ai_logger.warning(f" Optimizer: Error exportando a ONNX: {e}")
 
     def init_db(self):
         """Crea la base de datos de memoria permanente si no existe"""
@@ -129,15 +213,15 @@ class IPTVEvolutionaryBrain:
         import random as _rng
         src_path = kaggle_db_path or GOLD_DB_PATH
         if not os.path.exists(src_path):
-            print(f"⚠️ IA: No se encontró BD de Kaggle en {src_path}")
+            print(f" Optimizer: No se encontró BD de Kaggle en {src_path}")
             return 0
 
         local_count = self.get_total_experiences()
         if local_count >= 1000:
-            print(f"ℹ️ IA: BD local ya tiene {local_count:,} experiencias. Importación omitida.")
+            print(f"ℹ Optimizer: BD local ya tiene {local_count:,} experiencias. Importación omitida.")
             return local_count
 
-        print(f"📥 IA: Importando memoria Kaggle desde {src_path}...")
+        print(f" Optimizer: Importando memoria Kaggle desde {src_path}...")
         src  = sqlite3.connect(src_path)
         dst  = sqlite3.connect(DB_PATH)
         now  = time.time()
@@ -171,7 +255,7 @@ class IPTVEvolutionaryBrain:
         dst.commit()
         dst.close()
         total = self.get_total_experiences()
-        print(f"✅ IA: {imported:,} experiencias Kaggle importadas. Total BD local: {total:,}")
+        print(f" Optimizer: {imported:,} experiencias Kaggle importadas. Total BD local: {total:,}")
         return total
 
     def load_config(self):
@@ -193,6 +277,7 @@ class IPTVEvolutionaryBrain:
             json.dump(self.config, f)
 
     def start_auto_retraining(self, interval_minutes=30):
+        """Daemon de reentrenamiento que dispara evolve_brain() cuando hay suficientes datos nuevos."""
         def _daemon():
             while True:
                 time.sleep(interval_minutes * 60)
@@ -200,7 +285,7 @@ class IPTVEvolutionaryBrain:
                 nuevos_rows = current_count - getattr(self, "_last_retrain_count", 0)
                 if nuevos_rows > 100:
                     try:
-                        self._retrain()
+                        self.evolve_brain()  # Punto de entrada único de entrenamiento
                         self._last_retrain_count = self.get_total_experiences()
                     except Exception as e:
                         print(f"Error en auto-retraining: {e}")
@@ -208,56 +293,11 @@ class IPTVEvolutionaryBrain:
         t = threading.Thread(target=_daemon, daemon=True)
         t.start()
 
-    def _retrain(self):
-        import math
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT size_mb, cpu, ram, latency, actual_speed, is_critical
-            FROM experiences
-            WHERE actual_speed IS NOT NULL AND actual_speed > 0
-            ORDER BY id DESC LIMIT 10000
-        ''')
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows: return
-
-        raw_X, raw_Y = [], []
-        for rc in rows:
-            size_mb, cpu, ram, latency, actual_speed, is_critical = rc
-            ratio = (2500.0 / actual_speed) if actual_speed > 5 else 1.0
-            
-            # Features v5.0
-            raw_X.append([
-                math.log1p(size_mb), cpu, ram, math.sqrt(max(0, latency)),
-                ratio, (cpu * ratio) / 100.0, 0.5
-            ])
-            
-            # Labels v5.0 (8 Salidas)
-            # [conn, buf, delay, pref, threads, preset, reconnect, stall]
-            if ratio > 1.2 or is_critical:
-                raw_Y.append([2, math.log(16384), 1.5, 40, 4, 0, 1, 0.9]) # Agresivo
-            else:
-                raw_Y.append([8, math.log(2048), 0.05, 4, 2, 1, 0, 0.1])  # Eficiente
-
-        X, Y = np.array(raw_X), np.array(raw_Y)
-
-        with self.lock:
-            X_scaled = self.scaler_x.fit_transform(X)
-            Y_scaled = self.scaler_y.fit_transform(Y)
-            
-            if self.model is None:
-                self.model = MLPRegressor(hidden_layer_sizes=tuple(self.config["layers"]), warm_start=True)
-            
-            self.model.fit(X_scaled, Y_scaled)
-            self.config["avg_error"] = float(self.model.loss_)
-            self.save_config()
-            
-            joblib.dump(self.model, MODEL_PATH)
-            joblib.dump(self.scaler_x, os.path.join(CACHE_DIR, "iptv_scaler_x_v4.pkl"))
-            joblib.dump(self.scaler_y, os.path.join(CACHE_DIR, "iptv_scaler_y_v4.pkl"))
-            print(f"   [Cerebro] 🧠 Evolución Completada (Error: {self.config['avg_error']:.6f})")
+    # ── NOTA v6.1: _retrain() eliminado ──────────────────────────────────────
+    # La función _retrain() fue unificada en evolve_brain() para evitar doble
+    # lógica contradictoria y scalers que se reseteaban mutuamente.
+    # evolve_brain() es ahora el único punto de entrada de entrenamiento.
+    # ─────────────────────────────────────────────────────────────────────────
 
     def load_scaler_x(self):
         path = os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), "iptv_scaler_x_v4.pkl")
@@ -274,37 +314,60 @@ class IPTVEvolutionaryBrain:
         return StandardScaler()
 
 
+    def load_lgbm_model(self):
+        """Carga el modelo LightGBM (Motor Principal v7.0) si está disponible"""
+        if HAS_LIGHTGBM and os.path.exists(LIGHTGBM_MODEL_PATH):
+            try:
+                lgb_m = joblib.load(LIGHTGBM_MODEL_PATH)
+                ai_logger.info(" Optimizer: Modelo LightGBM (Motor Principal v7.0) cargado exitosamente.")
+                return lgb_m
+            except Exception as e:
+                ai_logger.warning(f" Optimizer: Error cargando modelo LightGBM ({e}).")
+        return None
+
     def load_model(self):
         if os.path.exists(MODEL_PATH):
             try:
-                return joblib.load(MODEL_PATH)
+                model = joblib.load(MODEL_PATH)
+                # Auto-migración: descartar modelo si sus salidas no coinciden con la versión actual
+                if hasattr(model, 'n_outputs_') and model.n_outputs_ != self.EXPECTED_N_OUTPUTS:
+                    print(f"ℹ Optimizer: Modelo PKL incompatible ({model.n_outputs_} salidas vs "
+                          f"{self.EXPECTED_N_OUTPUTS} esperadas). Descartando para reentrenar...")
+                    return None
+                return model
             except:
                 return None
         return None
 
     def get_features(self, url, size_mb, latency=0, speed_kbps=0.0, required_bitrate=0.0):
         """
-        Extrae 7 features para la v5 del Cerebro de Combate de 256 neuronas
+        Extrae 7 features para la v6.1 del Cerebro.
+
+        Cambio v6.1: Feature #7 cambiada de sesgo constante (0.5) a hora del día
+        normalizada (hour/23.0). El sesgo constante era convertido a 0 por
+        StandardScaler (varianza=0), por lo que no aportaba información alguna.
+        La hora del día captura patrones de tráfico diurno/nocturno reales.
         """
         import math
         
         cpu = psutil.cpu_percent()
         ram = psutil.virtual_memory().percent
+        hour_norm = time.localtime().tm_hour / 23.0  # [0.0, 1.0]
         
-        # 5. ratio = required_bitrate / max(speed_kbps, 1.0)  — si speed_kbps <= 5.0 usar 1.0
+        # ratio = required_bitrate / speed_kbps — mide presión de ancho de banda
         if speed_kbps <= 5.0:
             ratio = 1.0
         else:
             ratio = required_bitrate / max(speed_kbps, 1.0)
             
         return np.array([[
-            math.log1p(size_mb),               # 1
-            cpu,                               # 2
-            ram,                               # 3
-            math.sqrt(max(0, latency)),        # 4
-            ratio,                             # 5
-            (cpu * ratio) / 100.0,             # 6
-            0.5                                # 7 (sesgo)
+            math.log1p(size_mb),               # 1. Tamaño logarítmico
+            cpu,                               # 2. Carga CPU
+            ram,                               # 3. Uso RAM
+            math.sqrt(max(0, latency)),        # 4. Latencia suavizada
+            ratio,                             # 5. Ratio de asfixia de ancho de banda
+            (cpu * ratio) / 100.0,             # 6. Interacción CPU × ratio
+            hour_norm                          # 7. Hora del día [0.0-1.0] (era sesgo 0.5)
         ]])
 
     def calculate_bola_quality(self, available_qualities, buffer_ms, V=0.8):
@@ -343,17 +406,17 @@ class IPTVEvolutionaryBrain:
                 
         res = best_quality.get('resolution', 'N/A')
         br = best_quality.get('bitrate', 0)
-        print(f"   🧠 IA ABR (BOLA) | Buffer: {buffer_ms}ms -> Selección Lyapunov: {res} a {br}kbps")
+        print(f"    Optimizer ABR (BOLA) | Buffer: {buffer_ms}ms -> Selección Lyapunov: {res} a {br}kbps")
         return best_quality
 
 
     def predict_optimal_config(self, url, size_mb, latency=0, speed_kbps=0.0, required_bitrate=0.0):
-        """Predice la mejor configuración basándose en el estado del sistema, red y MEMORIA de fallos"""
+        """Predice la mejor configuración basándose en el estado del sistema, red y MEMOROptimizer de fallos"""
         with self.lock:
             sys_cpu = psutil.cpu_percent()
             sys_ram = psutil.virtual_memory().percent
             
-            # 🧠 SEGUNDO CEREBRO: Memoria Histórica del Servidor IPTV
+            #  SEGUNDO CEREBRO: Memoria Histórica del Servidor IPTV
             domain = url.split('/')[2] if '/' in url else "unknown"
             recent_failures = 0
             try:
@@ -367,81 +430,110 @@ class IPTVEvolutionaryBrain:
                 conn.close()
             except: pass
 
-            if self.model is None:
-                config = self.expert_fallback(size_mb, recent_failures)
-                reason = f"Lógica Experto | CPU: {sys_cpu}%"
-                if recent_failures > 0: reason += f" | Historial Fallos Servidor: {recent_failures}"
-                logging.info(f"🧠 IA RAZONAMIENTO | {reason} | URL: {url[:30]}... | OUT: {config}")
-                return config
-            try:
-                import math
+            pred = None
+            engine_used = None
+
+            # ── 1. Intento Motor Principal LightGBM (Gradient Boosted Trees v7.0) ──
+            if self.lgb_model is not None:
+                try:
+                    X_features = self.get_features(url, size_mb, latency, speed_kbps, required_bitrate)
+                    pred = self.lgb_model.predict(X_features)[0]
+                    engine_used = "LightGBM v7.0 (Motor Principal - Árboles Gradient Boosted)"
+                except Exception as lgb_err:
+                    ai_logger.warning(f"LightGBM predict falló ({lgb_err}), ejecutando neural fallback")
+
+            # ── 2. Intento Neural Fallback (ONNX Session / MLPRegressor v6.1) ───────
+            if pred is None:
+                if self.model is None:
+                    config = self.expert_fallback(size_mb, recent_failures)
+                    reason = f"Lógica Experto | CPU: {sys_cpu}%"
+                    if recent_failures > 0: reason += f" | Historial Fallos Servidor: {recent_failures}"
+                    logging.info(f" Optimizer RAZONAMIENTO | {reason} | URL: {url[:30]}... | OUT: {config}")
+                    return config
+                try:
+                    X_features = self.get_features(url, size_mb, latency, speed_kbps, required_bitrate)
+                    X_scaled = self.scaler_x.transform(X_features)
+                    
+                    if self.onnx_session is not None:
+                        try:
+                            input_name = self.onnx_session.get_inputs()[0].name
+                            pred_scaled = self.onnx_session.run(None, {input_name: X_scaled.astype(np.float32)})[0][0]
+                            engine_used = "ONNX Runtime v6.1 (Neural Fallback)"
+                        except Exception as onnx_err:
+                            pred_scaled = self.model.predict(X_scaled)[0]
+                            engine_used = "MLPRegressor v6.1 (Neural Fallback)"
+                    else:
+                        pred_scaled = self.model.predict(X_scaled)[0]
+                        engine_used = "MLPRegressor v6.1 (Neural Fallback)"
+
+                    pred = self.scaler_y.inverse_transform([pred_scaled])[0]
+                except Exception as e:
+                    logging.error(f" Optimizer ERROR en predicción: {e}")
+                    return self.expert_fallback(size_mb, recent_failures)
+            else:
                 X_features = self.get_features(url, size_mb, latency, speed_kbps, required_bitrate)
-                X_scaled = self.scaler_x.transform(X_features)
-                pred_scaled = self.model.predict(X_scaled)[0]
-                pred = self.scaler_y.inverse_transform([pred_scaled])[0]
-                
-                # Desempaquetar y limpiar predicción (Mapeo dinámico v5.0)
-                if len(pred) >= 8:
-                    c_conn, buf_log, delay, pref, th, pr_idx, rec, st_prob = pred
-                else:
-                    c_conn, buf_log, delay, pref = pred
-                    th, pr_idx, rec, st_prob = 2, 0, 0, 0.1 # Fallbacks seguros v4.0
-                
-                buf_real = math.exp(buf_log) if buf_log < 15 else 16384 # Protección para no desbordar
-                
-                # Limitamos num_conn drásticamente (max 4) para evitar bloqueos del proveedor IPTV
-                num_conn = int(np.clip(round(c_conn), 1, 4))
-                buffer_size = int(np.clip(round(buf_real), 2048, 16384))
-                retry_delay = float(np.clip(delay, 0.01, 3.0))
-                prefetch_count = int(np.clip(round(pref), 1, 40))
 
-                # Parámetros avanzados de FFmpeg/Watchdog (256 Neuronas)
-                ai_threads = int(np.clip(round(th), 1, 4))
-                ai_preset_list = ["ultrafast", "superfast", "veryfast", "faster"]
-                ai_preset = ai_preset_list[int(np.clip(round(pr_idx), 0, 3))]
-                ai_reconnect = 1 if rec > 0.5 else 0
-                ai_stall_prob = float(np.clip(st_prob, 0.0, 1.0))
-                
-                # MEMORIA PREVENTIVA: Castigo a servidores rebeldes
-                if recent_failures > 2:
-                    buffer_size = max(buffer_size, 4096)
-                    retry_delay = max(retry_delay, 1.5)
-                    num_conn = max(2, min(num_conn, 4)) # Estrangular conexiones paralelas para no romper el socket remoto
-                
-                # --- SAFETY OVERRIDE LAYER (ANTI-HALLUCINATION) ---
-                # Si el ratio de asfixia (Required / Speed) es alto, forzamos buffer máximo 
-                # para evitar cortes, protegiendo al sistema contra modelos mal entrenados.
-                x_ratio = X_features[0, 4]
-                if x_ratio > 1.2:
-                    if buffer_size < 16384:
-                        buffer_size = 16384
-                elif x_ratio < 0.5:
-                    if buffer_size > 4096:
-                        buffer_size = 2048 # Ahorro de RAM preventivo
+            # Desempaquetar y limpiar predicción (Mapeo dinámico v5.0/v7.0)
+            if len(pred) >= 8:
+                c_conn, buf_log, delay, pref, th, pr_idx, rec, st_prob = pred
+            else:
+                c_conn, buf_log, delay, pref = pred
+                th, pr_idx, rec, st_prob = 2, 0, 0, 0.1 # Fallbacks seguros v4.0
 
-                config = {
-                    "num_conn": num_conn,
-                    "buffer_kb": buffer_size,
-                    "retry_delay": round(retry_delay, 3),
-                    "prefetch_count": prefetch_count,
-                    "threads": ai_threads,
-                    "preset": ai_preset,
-                    "reconnect": ai_reconnect,
-                    "stall_prob": ai_stall_prob
-                }
-                
-                reason = f"Predicción Neuronal (v5.0) basada en Latencia {latency:.0f}ms y Carga {sys_cpu}%"
-                if getattr(self, 'consecutive_errors', 0) > 2:
-                    config["num_conn"] = max(2, config["num_conn"] // 2)
-                    reason += " | PENALIZACIÓN errores seguidos"
-                if recent_failures > 0:
-                    reason += f" | MEMORIA SEVERA: {recent_failures} fallos origen 24h"
-                
-                logging.info(f"🧠 IA DECISIÓN | {reason} | URL: {url[:30]}... | DECISIÓN: {config}")
-                return config
-            except Exception as e:
-                logging.error(f"❌ IA ERROR en predicción: {e}")
-                return self.expert_fallback(size_mb, recent_failures)
+            import math
+            buf_real = math.exp(buf_log) if buf_log < 15 else 16384 # Protección para no desbordar
+            
+            # Limitamos num_conn drásticamente (max 4) para evitar bloqueos del proveedor IPTV
+            num_conn = int(np.clip(round(c_conn), 1, 4))
+            buffer_size = int(np.clip(round(buf_real), 2048, 16384))
+            retry_delay = float(np.clip(delay, 0.01, 3.0))
+            prefetch_count = int(np.clip(round(pref), 1, 40))
+
+            # Parámetros avanzados de FFmpeg/Watchdog (v7.0 Engine)
+            ai_threads = int(np.clip(round(th), 1, 4))
+            ai_preset_list = ["ultrafast", "superfast", "veryfast", "faster"]
+            ai_preset = ai_preset_list[int(np.clip(round(pr_idx), 0, 3))]
+            ai_reconnect = 1 if rec > 0.5 else 0
+            ai_stall_prob = float(np.clip(st_prob, 0.0, 1.0))
+            
+            # MEMOROptimizer PREVENTIVA: Castigo a servidores rebeldes
+            if recent_failures > 2:
+                buffer_size = max(buffer_size, 4096)
+                retry_delay = max(retry_delay, 1.5)
+                num_conn = max(2, min(num_conn, 4)) # Estrangular conexiones paralelas para no romper el socket remoto
+            
+            # --- SAFETY OVERRIDE LAYER (ANTI-HALLUCINATION) ---
+            # Si el ratio de asfixia (Required / Speed) es alto, forzamos buffer máximo 
+            # para evitar cortes, protegiendo al sistema contra modelos mal entrenados.
+            x_ratio = X_features[0, 4]
+            if x_ratio > 1.2:
+                if buffer_size < 16384:
+                    buffer_size = 16384
+            elif x_ratio < 0.5:
+                if buffer_size > 4096:
+                    buffer_size = 2048 # Ahorro de RAM preventivo
+
+            config = {
+                "num_conn": num_conn,
+                "buffer_kb": buffer_size,
+                "retry_delay": round(retry_delay, 3),
+                "prefetch_count": prefetch_count,
+                "threads": ai_threads,
+                "preset": ai_preset,
+                "reconnect": ai_reconnect,
+                "stall_prob": ai_stall_prob
+            }
+            
+            reason = f"Predicción {engine_used or 'IA'} basada en Latencia {latency:.0f}ms y Carga {sys_cpu}%"
+            if getattr(self, 'consecutive_errors', 0) > 2:
+                config["num_conn"] = max(2, config["num_conn"] // 2)
+                reason += " | PENALIZACIÓN errores seguidos"
+            if recent_failures > 0:
+                reason += f" | MEMOROptimizer SEVERA: {recent_failures} fallos origen 24h"
+            
+            logging.info(f" Optimizer DECISIÓN | {reason} | URL: {url[:30]}... | DECISIÓN: {config}")
+            return config
+
 
     def expert_fallback(self, size_mb, failures=0):
         # Fallback mucho más agresivo si sabemos que el server falla mucho
@@ -452,8 +544,8 @@ class IPTVEvolutionaryBrain:
         return {"num_conn": 8, "buffer_kb": 2500, "retry_delay": 1.0, "prefetch_count": 4}
 
     def log_experience(self, url, size_mb, speed_kbps, success, latency=0, channel_name=None):
-        """Guarda la experiencia en la memoria permanente (SQLite) con logs de éxito/fallo"""
-        logging.info(f"💾 IA MEMORIA | Registrando evento: {channel_name or url[:30]}... | Velocidad: {speed_kbps:.0f} KB/s | Éxito: {success}")
+        """Guarda la experiencia en la cola asíncrona de SQLite (0ms latencia para el hilo de streaming)"""
+        logging.info(f" Optimizer MEMOROptimizer | Registrando evento: {channel_name or url[:30]}... | Velocidad: {speed_kbps:.0f} KB/s | Éxito: {success}")
         t = time.localtime()
         domain = url.split('/')[2] if '/' in url else "unknown"
         
@@ -466,18 +558,11 @@ class IPTVEvolutionaryBrain:
         target_delay = 0.4 if is_critical else 0.05
         target_prefetch = 8 if is_critical else 3
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO experiences 
-            (timestamp, url_domain, full_url, channel_name, size_mb, hour, day_of_week, cpu, ram, latency, 
-             target_num_conn, target_buffer, target_delay, target_prefetch, actual_speed, success, is_critical)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (time.time(), domain, url, channel_name, size_mb, t.tm_hour, t.tm_wday, psutil.cpu_percent(), 
-              psutil.virtual_memory().percent, latency, target_num_conn, target_buffer, 
-              target_delay, target_prefetch, speed_kbps, 1 if success else 0, is_critical))
-        conn.commit()
-        conn.close()
+        item = (time.time(), domain, url, channel_name, size_mb, t.tm_hour, t.tm_wday, psutil.cpu_percent(), 
+                psutil.virtual_memory().percent, latency, target_num_conn, target_buffer, 
+                target_delay, target_prefetch, speed_kbps, 1 if success else 0, is_critical)
+        
+        self.db_queue.put(item)
         
         self.experience_count += 1
         if self.experience_count % 100 == 0:
@@ -488,7 +573,7 @@ class IPTVEvolutionaryBrain:
         if not target_name:
             return None
             
-        print(f"🔍 IA: Buscando mirror para '{target_name}'...")
+        print(f" Optimizer: Buscando mirror para '{target_name}'...")
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -515,13 +600,13 @@ class IPTVEvolutionaryBrain:
         conn.close()
         
         if res:
-            print(f"✨ IA: Mirror encontrado: {res[0]} (speed: {res[1]:.0f} KB/s)")
+            print(f" Optimizer: Mirror encontrado: {res[0]} (speed: {res[1]:.0f} KB/s)")
             return res[0]
         return None
 
     def log_failure(self, url):
         """Marca una URL como no confiable"""
-        print(f"💔 IA: Registrando fallo crítico en URL: {url[:60]}...")
+        print(f" Optimizer: Registrando fallo crítico en URL: {url[:60]}...")
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
@@ -539,123 +624,254 @@ class IPTVEvolutionaryBrain:
             return res
         except: return 0
 
-    def evolve_brain(self):
-        """Sincronización a 12 features para precisión de Nivel 2"""
+    @staticmethod
+    def _compute_continuous_labels(size_mb, cpu, ram, latency, speed, hour, success):
+        """
+        v6.1: Genera targets CONTINUOS usando matemática derivada (inspirada en RuleEngine).
+
+        PROBLEMA ANTERIOR: Los labels eran binarios (2 estados fijos: agresivo/eficiente).
+        Una red neuronal entrenada con labels binarios converge a un punto medio estático
+        y pierde toda granularidad de decisión.
+
+        SOLUCIÓN: Calcular targets con funciones continuas que varían suavemente con
+        cada combinación de condiciones de red, produciendo miles de valores únicos.
+        """
         import math
-        print("🧠 IA: Iniciando fase de consolidación de memoria...")
+
+        # ── 1. CONEXIONES — escalado cuadrático con calidad de red ──────────────
+        # Representa el ancho de banda como fasor: magnitud = calidad total
+        bw_norm = min(speed / 50000.0, 1.0)           # [0,1] normalizado a 50Mbps
+        lat_norm = 1.0 / (1.0 + latency / 100.0)      # [0,1] — más lat = peor
+        quality2 = bw_norm ** 2 + lat_norm ** 2        # suma cuadrática de componentes
+        stress = math.sqrt(max(0.001, cpu / 100) * max(0.001, ram / 100))
+        bw_log = math.log2(speed / 1000 + 1)
+        conn_raw = 16.0 * quality2 * bw_log * (1 - stress / 2)
+        if speed < 1500:
+            conn_raw = max(2, min(3, round(speed / 750)))
+        if cpu > 85:
+            conn_raw = max(2, conn_raw // 2)
+        target_conn = float(np.clip(round(conn_raw), 2, 32))
+        if not success:
+            target_conn = max(2.0, target_conn * 0.6)  # Retroceder en fallos
+
+        # ── 2. BUFFER — Shannon entropy en función de error de paquetes ──────────
+        # La pérdida de paquetes estimada es proporcional a la latencia y al ratio de asfixia
+        ratio = (2500.0 / max(speed, 1.0)) if speed > 5 else 1.0
+        p_error = min(0.99, max(0.01, (1 - min(speed / 50000.0, 0.99)) * min(latency / 500, 1.0)))
+        entropy = -(p_error * math.log2(p_error) + (1 - p_error) * math.log2(1 - p_error))
+        snr = max(0.1, speed / (1 + latency * 10))
+        buf = max(512, min(16384, int(256 + 4096 * (entropy / max(0.1, math.log2(math.log2(1 + snr) + 1))))))
+        if speed < 1500 or latency > 500:
+            buf = min(16384, int(buf * 1.5))
+        target_buf_log = math.log(float(buf))
+
+        # ── 3. DELAY — backoff exponencial TCP-inspired ───────────────────────────
+        severity = (2.0 if speed < 500 else 0.0) + (1.5 if latency > 300 else 0.0) + (0.5 if cpu > 80 else 0.0)
+        target_delay = float(np.clip(0.02 * math.exp(0.35 * severity), 0.01, 2.0))
+
+        # ── 4. PREFETCH — segmentos para cubrir startup latency ──────────────────
+        startup_est = (1.0 / max(0.1, lat_norm)) * (1 + p_error * 3)
+        target_prefetch = float(np.clip(math.ceil(startup_est / 2.0), 1, 20))
+
+        # ── 5. THREADS — inverso al estrés del sistema ───────────────────────────
+        target_threads = float(np.clip(4 - round(stress * 3), 1, 4))
+
+        # ── 6. PRESET — más lento cuando hay holgura de CPU ─────────────────────
+        # 0=ultrafast, 1=superfast, 2=veryfast, 3=faster
+        target_preset = float(np.clip(round(stress * 3), 0, 3))
+
+        # ── 7. RECONNECT — necesario si hay riesgo de fallo ─────────────────────
+        target_reconnect = 1.0 if (not success or ratio > 1.2 or latency > 300) else 0.0
+
+        # ── 8. STALL PROB — probabilidad de pausa proporcional a la asfixia ─────
+        target_stall = float(np.clip(ratio * 0.5 * (1 - lat_norm), 0.0, 1.0))
+
+        return [
+            target_conn,
+            target_buf_log,
+            target_delay,
+            target_prefetch,
+            target_threads,
+            target_preset,
+            target_reconnect,
+            target_stall
+        ]
+
+    def evolve_brain(self):
+        """
+        v6.1: Punto de entrada ÚNICO de entrenamiento del modelo.
+
+        Cambios respecto a v5.0:
+        - Labels continuas (via _compute_continuous_labels) en lugar de 2 estados binarios
+        - Feature #7 = hour_norm (hora/23) en lugar de constante 0.5
+        - Replay buffer ampliado: 800 recientes + 6000 críticos/aleatorios
+        - Regularización mejorada (alpha=0.001) para evitar overfitting
+        - early_stopping=True para detener entrenamiento en el punto óptimo
+        - Arquitectura CONGELADA — sin auto-expansión de capas
+        """
+        import math
+        print(" Optimizer: Iniciando fase de consolidación de memoria (v6.1)...")
         conn = sqlite3.connect(DB_PATH)
-        # Replay Buffer: 500 recientes + 5000 históricos aleatorios (Kaggle-scale)
+
+        # Replay Buffer mejorado: más recientes + críticos priorizados
         recent = conn.execute("""
             SELECT url_domain, size_mb, hour, day_of_week, cpu, ram, latency,
                    target_num_conn, target_buffer, target_delay, target_prefetch, success, actual_speed
-            FROM experiences ORDER BY id DESC LIMIT 500
+            FROM experiences ORDER BY id DESC LIMIT 800
         """).fetchall()
         critical = conn.execute("""
             SELECT url_domain, size_mb, hour, day_of_week, cpu, ram, latency,
                    target_num_conn, target_buffer, target_delay, target_prefetch, success, actual_speed
-            FROM experiences WHERE is_critical = 1 ORDER BY RANDOM() LIMIT 5000
+            FROM experiences WHERE is_critical = 1 ORDER BY RANDOM() LIMIT 4000
+        """).fetchall()
+        random_hist = conn.execute("""
+            SELECT url_domain, size_mb, hour, day_of_week, cpu, ram, latency,
+                   target_num_conn, target_buffer, target_delay, target_prefetch, success, actual_speed
+            FROM experiences ORDER BY RANDOM() LIMIT 2000
         """).fetchall()
         conn.close()
-        
-        data = recent + critical
-        if len(data) < 20: return
+
+        data = recent + critical + random_hist
+        if len(data) < 20:
+            print(" Optimizer: Datos insuficientes para entrenar")
+            return
 
         X, Y = [], []
         for d in data:
             try:
-                domain_hash = hash(d[0]) % 100
-                size_mb, hour, dow, cpu, ram = float(d[1] or 0), float(d[2] or 0), float(d[3] or 0), float(d[4] or 0), float(d[5] or 0)
-                lat = float(d[6] or 0)
-                success = d[11]
-                speed = float(d[12] or 1.0)
-                
+                size_mb  = float(d[1] or 0)
+                hour     = float(d[2] or 0)
+                cpu      = float(d[4] or 0)
+                ram      = float(d[5] or 0)
+                lat      = float(d[6] or 0)
+                success  = bool(d[11])
+                speed    = float(d[12] or 1.0)
+                hour_norm = hour / 23.0  # Normalizar hora al rango [0,1]
+
                 starvation_ratio = (2500.0 / speed) if speed > 5.0 else 1.0
-                cpu_interaction = (cpu / 100.0) * starvation_ratio
+                cpu_interaction  = (cpu / 100.0) * starvation_ratio
 
-                # 🧠 RECONSTRUCCIÓN EXACTA DE LAS 7 FEATURES (v5)
+                # v6.1: 7 features — el último es hora normalizada (no sesgo constante)
                 X.append([
-                    math.log1p(size_mb),                   # 1. log-size
-                    cpu,                                   # 2. cpu
-                    ram,                                   # 3. ram
-                    math.sqrt(max(0, lat)),                # 4. sqrt latency
-                    starvation_ratio,                      # 5. Ratio asfixia
-                    cpu_interaction,                       # 6. CPU Interacción
-                    0.5                                    # 7. Constante sesgo
+                    math.log1p(size_mb),         # 1. Tamaño log
+                    cpu,                         # 2. CPU
+                    ram,                         # 3. RAM
+                    math.sqrt(max(0, lat)),      # 4. Latencia suavizada
+                    starvation_ratio,            # 5. Ratio de asfixia
+                    cpu_interaction,             # 6. Interacción CPU × ratio
+                    hour_norm                    # 7. Hora del día [0.0-1.0]
                 ])
-                
-                target_conn = float(d[7] or 8)
-                if not success:
-                    target_conn = max(2.0, target_conn * 0.5)
 
-                Y.append([
-                    target_conn,
-                    math.log(max(2048.0, float(d[8] or 2048))), # Convertir a logarítmico para retrocompatibilidad
-                    float(d[9] or 0.1),
-                    float(d[10] or 4),
-                ])
+                # v6.1: Labels CONTINUAS generadas con matemática derivada
+                Y.append(self._compute_continuous_labels(
+                    size_mb, cpu, ram, lat, speed, hour, success
+                ))
             except Exception:
                 continue
 
         if len(X) < 20:
-            print("⚠️ IA: Datos insuficientes o corruptos para entrenar")
+            print(" Optimizer: Datos corruptos insuficientes para entrenar")
             return
 
         X = np.array(X)
         Y = np.array(Y)
 
         with self.lock:
+            # Verificar compatibilidad de salidas antes de warm_start
+            if self.model is not None and hasattr(self.model, 'n_outputs_') and self.model.n_outputs_ != Y.shape[1]:
+                ai_logger.warning(f"Modelo existente tiene {self.model.n_outputs_} salidas "
+                                  f"vs {Y.shape[1]} esperadas. Reiniciando modelo.")
+                self.model = None
+                self.scaler_y = StandardScaler()
+
             self.scaler_x.fit(X)
             self.scaler_y.fit(Y)
-            
             X_scaled = self.scaler_x.transform(X)
             Y_scaled = self.scaler_y.transform(Y)
-            
-            # Si no hay modelo o queremos evolucionar
+
+            # ── Construir o recuperar modelo con parámetros v6.1 ───────────────
             if self.model is None:
                 self.model = MLPRegressor(
-                    hidden_layer_sizes=tuple(self.config["layers"]),
-                    activation='relu', solver='adam', max_iter=600,
-                    learning_rate='invscaling', learning_rate_init=0.01, power_t=0.5,
-                    alpha=0.0001, warm_start=True
+                    hidden_layer_sizes=tuple(self.config["layers"]),  # [256, 128, 64, 32] CONGELADO
+                    activation='relu',
+                    solver='adam',
+                    max_iter=800,
+                    learning_rate='adaptive',        # Reduce LR automáticamente si loss estanca
+                    learning_rate_init=0.005,         # Más conservador que 0.01 anterior
+                    alpha=0.001,                      # Regularización L2 mejorada (era 0.0001)
+                    early_stopping=True,              # Detiene en punto óptimo (antioverfit)
+                    validation_fraction=0.1,
+                    n_iter_no_change=20,
+                    warm_start=True
                 )
             else:
-                self.model.warm_start = True
-                self.model.alpha = 0.0001
+                # Actualizar hiperparámetros de regularización en modelo existente
+                self.model.alpha              = 0.001
+                self.model.learning_rate      = 'adaptive'
+                self.model.learning_rate_init = 0.005
+                self.model.early_stopping     = True
+                self.model.n_iter_no_change   = 20
+                self.model.warm_start         = True
 
-            
-            # Entrenamiento Incremental
             self.model.fit(X_scaled, Y_scaled)
-            
-            # Evaluar si necesitamos expandir el cerebro
+
             error = self.model.loss_
-            print(f"📊 IA: Error actual del cerebro: {error:.6f}")
-            
-            if error < 0.1 and self.config["total_trainings"] > 5:
-                self.expand_architecture()
-            
+            print(f" Optimizer: Evolución v6.1 MLP completada. Loss={error:.6f} | Samples={len(X)}")
+
+            # ── 2. Entrenar Motor Principal LightGBM (v7.0) ───────────────────
+            if HAS_LIGHTGBM:
+                try:
+                    base_lgb = lgb.LGBMRegressor(
+                        n_estimators=120,
+                        learning_rate=0.03,
+                        max_depth=5,
+                        num_leaves=31,
+                        subsample=0.8,
+                        colsample_bytree=0.8,
+                        random_state=42,
+                        verbosity=-1,
+                        n_jobs=-1
+                    )
+                    self.lgb_model = MultiOutputRegressor(base_lgb)
+                    self.lgb_model.fit(X, Y)
+                    joblib.dump(self.lgb_model, LIGHTGBM_MODEL_PATH)
+
+                    feature_names = ["log_size", "cpu", "ram", "sqrt_lat", "ratio", "cpu_interaction", "hour_norm"]
+                    importances = np.mean([est.feature_importances_ for est in self.lgb_model.estimators_], axis=0)
+                    total_imp = np.sum(importances)
+                    norm_importances = (importances / total_imp).tolist() if total_imp > 0 else [0.0]*7
+                    
+                    self.config["primary_engine"] = "LightGBM"
+                    self.config["lgb_feature_importances"] = dict(zip(feature_names, [round(x, 4) for x in norm_importances]))
+                    print(f" Optimizer: LightGBM v7.0 (Motor Principal) entrenado. Importancias: {self.config['lgb_feature_importances']}")
+                except Exception as lgb_train_err:
+                    ai_logger.error(f" Optimizer: Error entrenando LightGBM: {lgb_train_err}")
+
             self.config["total_trainings"] += 1
             self.config["avg_error"] = error
+            self.config["last_evolve_samples"] = len(X)
             self.save_config()
-            
-            joblib.dump(self.model, MODEL_PATH)
-            joblib.dump(self.scaler_x, os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), "iptv_scaler_x_v4.pkl"))
-            joblib.dump(self.scaler_y, os.path.join(os.path.join(os.path.dirname(__file__), '..', 'cache'), "iptv_scaler_y_v4.pkl"))
-            print("✅ IA: Evolución completada. Memoria consolidada.")
 
+            joblib.dump(self.model, MODEL_PATH)
+            joblib.dump(self.scaler_x, os.path.join(CACHE_DIR, "iptv_scaler_x_v4.pkl"))
+            joblib.dump(self.scaler_y, os.path.join(CACHE_DIR, "iptv_scaler_y_v4.pkl"))
+
+            # Exportar nuevo ONNX con modelo actualizado
+            try:
+                self.export_onnx_model()
+            except Exception as onnx_err:
+                ai_logger.warning(f"Export ONNX falló (no crítico): {onnx_err}")
+
+            print(" Optimizer: Evolución completada. Memoria consolidada.")
 
     def expand_architecture(self):
-        """Añade una nueva capa de neuronas para manejar mayor complejidad"""
-        self.config["complexity_level"] += 1
-        new_layer = 16 + (self.config["complexity_level"] * 4)
-        self.config["layers"].insert(0, new_layer)
-        print(f"🚀 IA: ¡AUTO-EXPANSIÓN! Nueva estructura cerebral: {self.config['layers']}")
-        self.model = MLPRegressor(
-            hidden_layer_sizes=tuple(self.config["layers"]),
-            activation='relu', solver='adam', max_iter=600,
-            learning_rate='invscaling', learning_rate_init=0.01, power_t=0.5,
-            alpha=0.0001, warm_start=True
-        )
-        self.save_config()
+        """
+        v6.1: DESACTIVADA — no se llama en producción.
+        Mantener como método para uso manual en experimentos controlados.
+        La auto-expansión causaba overfitting progresivo en el modelo MLP
+        ya que añadía capas ante cualquier loss < 0.1 (fácil de lograr con labels binarias).
+        """
+        ai_logger.warning("expand_architecture() llamada pero DESACTIVADA en v6.1. Ignorando.")
 
 # Instancia Global del Cerebro
 ai_optimizer = IPTVEvolutionaryBrain()
@@ -684,7 +900,7 @@ class ThrottleDetector:
     WINDOW_SIZE     = 20    # Número de muestras en la ventana histórica
     THROTTLE_RATIO  = 0.50  # Detectar throttle si velocidad < 50% del historial
     MIN_PIECES      = 1
-    MAX_PIECES      = 5
+    MAX_PIECES      = 32    # Aumentado para descargas asíncronas de altísima velocidad
     DECAY_FACTOR    = 0.85  # Al recuperar velocidad, reducir piezas gradualmente
 
     # Banco de User-Agents: mezcla de browsers, players y bots legítimos
@@ -842,8 +1058,8 @@ class ThrottleDetector:
         Patrón: delay = piece_index * base_ms + gaussian_noise
         """
         import random as _rng
-        base_ms = 0.08   # 80ms entre piezas
-        noise   = abs(_rng.gauss(0, 0.03))
+        base_ms = 0.02   # 20ms entre piezas (Optimizado para asincronía)
+        noise   = abs(_rng.gauss(0, 0.01))
         return piece_index * base_ms + noise
 
 

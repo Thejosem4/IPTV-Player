@@ -8,7 +8,7 @@ una vez al día (por defecto 04:00 AM) para ejecutar tareas de mantenimiento:
   1. 📋 ACTUALIZAR PLAYLISTS  — Refresca todas las listas M3U del índice
   2. 🔍 ANALIZAR LOGS IA      — Revisa ai_decisions.log y detecta patrones de fallo
   3. 🧠 EVOLUCIONAR CEREBRO   — Dispara evolve_brain() con todas las experiencias acumuladas
-  4. 📊 GENERAR REPORTE       — Escribe un resumen diario en C:/IPTV-Log/daily_report.txt
+  4. 📊 GENERAR REPORTE       — Escribe un resumen diario en logs/daily_report.txt
 
 Uso standalone (para pruebas):
     python ai_scheduler.py --now      # Ejecuta ciclo inmediatamente y sale
@@ -65,13 +65,24 @@ sched_logger.setLevel(logging.INFO)
 # TAREA 1: ACTUALIZAR PLAYLISTS
 # ─────────────────────────────────────────────────
 def task_refresh_playlists():
-    """Descarga y refresca todas las playlists del índice."""
+    """Descarga y refresca todas las playlists del índice usando la lógica unificada del servidor."""
     sched_logger.info("📋 TAREA 1: Actualizando playlists M3U...")
     results = []
 
     try:
         if not os.path.exists(CACHE_INDEX):
             sched_logger.info("  Sin índice de playlists — saltando")
+            return results
+
+        import importlib
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        if backend_dir not in sys.path:
+            sys.path.insert(0, backend_dir)
+
+        try:
+            iptv_server = importlib.import_module("iptv-server")
+        except Exception as e:
+            sched_logger.error(f"  ❌ No se pudo importar iptv-server: {e}")
             return results
 
         with open(CACHE_INDEX, "r", encoding="utf-8") as f:
@@ -93,41 +104,28 @@ def task_refresh_playlists():
             t0 = time.time()
 
             try:
-                req = urllib.request.Request(url)
-                req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                req.add_header("Accept-Encoding", "gzip, deflate")
+                # Usar la función robusta y unificada del servidor que también guarda el cache gzip
+                iptv_server.refresh_one_playlist(pid, url, name)
 
-                with urllib.request.urlopen(req, timeout=120) as resp:
-                    encoding = resp.headers.get("Content-Encoding", "").lower()
-                    raw = resp.read()
-
-                if encoding == "gzip":
-                    raw = gzip.decompress(raw)
-
-                text = raw.decode("utf-8", errors="ignore")
-                channel_count = text.count("#EXTINF")
-                elapsed = time.time() - t0
-
-                sched_logger.info(f"  ✅ {name}: {channel_count:,} canales en {elapsed:.1f}s")
-                results.append({"name": name, "channels": channel_count, "ok": True})
-
-                # Actualizar timestamp en índice
-                entry["timestamp"] = time.time()
-                entry["totalChannels"] = channel_count
+                # Obtener el resultado final del diccionario global del servidor
+                with iptv_server.refresh_status_lock:
+                    status_info = iptv_server.refresh_status.get(pid, {})
+                
+                if status_info.get("status") == "success":
+                    channel_count = status_info.get("total", 0)
+                    elapsed = time.time() - t0
+                    sched_logger.info(f"  ✅ {name}: {channel_count:,} canales en {elapsed:.1f}s")
+                    results.append({"name": name, "channels": channel_count, "ok": True})
+                else:
+                    err_msg = status_info.get("error", "Error desconocido")
+                    sched_logger.error(f"  ❌ {name}: {err_msg}")
+                    results.append({"name": name, "ok": False, "error": err_msg})
 
             except Exception as e:
                 sched_logger.error(f"  ❌ {name}: {e}")
                 results.append({"name": name, "ok": False, "error": str(e)})
-                
-                # FIX: Actualizar timestamp aunque falle para que el scheduler
-                # no reintente esta lista hasta el próximo ciclo diario
-                entry["timestamp"] = time.time()
 
             time.sleep(3)  # Pausa entre descargas
-
-        # Guardar índice actualizado
-        with open(CACHE_INDEX, "w", encoding="utf-8") as f:
-            json.dump(index, f, ensure_ascii=False, indent=2)
 
     except Exception as e:
         sched_logger.error(f"task_refresh_playlists error: {e}")
@@ -181,7 +179,7 @@ def task_analyze_ai_logs():
                 if "PENALIZACIÓN" in line:
                     analysis["penalization_events"] += 1
                 # Extraer hora del timestamp
-                m_hour = re.match(r'(\d{4}-\d{2}-\d{2} (\d{2}):', line)
+                m_hour = re.match(r'(\d{4}-\d{2}-\d{2}) (\d{2}):', line)
                 if m_hour and "ERROR" in line:
                     h = int(m_hour.group(2))
                     hour_fails[h] = hour_fails.get(h, 0) + 1
@@ -250,7 +248,7 @@ def task_evolve_brain():
 # TAREA 4: REPORTE DIARIO
 # ─────────────────────────────────────────────────
 def task_generate_report(playlist_results, log_analysis, brain_result):
-    """Escribe un reporte diario legible en C:/IPTV-Log/daily_report.txt."""
+    """Escribe un reporte diario legible en logs/daily_report.txt."""
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     lines = [

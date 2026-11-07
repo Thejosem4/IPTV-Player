@@ -590,7 +590,8 @@ try:
         for url, size, lat, label in tests:
             pred = ai_optimizer.predict_optimal_config(url, size, lat)
             print(f"\n    [{label}]")
-            print(f"      conex={pred['num_conn']:>3} | buffer={pred['buffer_size']:>5}KB | delay={pred['retry_delay']:.3f}s | prefetch={pred['prefetch_count']}")
+            buf = pred.get('buffer_kb', pred.get('buffer_size', 2048))
+            print(f"      conex={pred['num_conn']:>3} | buffer={buf:>5}KB | delay={pred['retry_delay']:.3f}s | prefetch={pred['prefetch_count']}")
 
 except Exception as e:
     import traceback

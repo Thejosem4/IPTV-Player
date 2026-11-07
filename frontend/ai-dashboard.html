@@ -42,7 +42,7 @@
     })();
     </script>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg: #0f172a;
@@ -187,7 +187,7 @@
     </div>
 
     <script>
-        const API_BASE = "http://localhost:5000/api";
+        const API_BASE = window.location.origin.startsWith("http") ? `${window.location.origin}/api` : "http://localhost:5000/api";
 
         async function updateStats() {
             try {

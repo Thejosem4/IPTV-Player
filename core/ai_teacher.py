@@ -121,21 +121,24 @@ class AIStudent:
         if not self.model or not hasattr(self.scaler_x, 'mean_'):
             return {"c": 12, "b": 512, "d": 0.05, "p": 2} # Dummy malo para forzar aprendizaje
 
-        # 12 Features (idéntico al núcleo)
-        size_mb, hour, dow = rec["size_mb"], rec["hour"], rec["day_of_week"]
+        # 7 Features (v6.1) — última es hora normalizada en lugar del sesgo 0.5
+        size_mb = rec["size_mb"]
         cpu, ram, lat = rec["cpu"], rec["ram"], rec["latency"]
-        domain_hash = hash(rec["url_domain"]) % 100
+        speed = max(1.0, float(rec.get("actual_speed", 1000.0)))
+        hour  = float(rec.get("hour", time.localtime().tm_hour))
+        hour_norm = hour / 23.0  # [0.0, 1.0]
+        
+        starvation_ratio = (2500.0 / speed) if speed > 5.0 else 1.0
+        cpu_interaction = (cpu / 100.0) * starvation_ratio
 
         features = [
-            math.log1p(size_mb),
-            math.sin(2 * math.pi * hour / 24), math.cos(2 * math.pi * hour / 24),
-            math.sin(2 * math.pi * dow / 7),   math.cos(2 * math.pi * dow / 7),
-            cpu, ram,
-            (cpu * ram) / 10000,
-            domain_hash,
-            math.sqrt(max(0, lat)),
-            math.log1p(max(0, lat)),
-            0.5
+            math.log1p(size_mb),                   # 1. log-size
+            cpu,                                   # 2. cpu
+            ram,                                   # 3. ram
+            math.sqrt(max(0, lat)),                # 4. sqrt latency
+            starvation_ratio,                      # 5. Ratio asfixia
+            cpu_interaction,                       # 6. CPU Interacción
+            hour_norm                              # 7. Hora normalizada [0.0-1.0] (v6.1)
         ]
 
         try:

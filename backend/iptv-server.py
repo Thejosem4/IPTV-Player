@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Servidor IPTV v7.0 - Resiliente y Multi-stream
+Servidor IPTV v7.2 - Resiliente y Multi-stream
 ─────────────────────────────────────────────────────────────
-✅ v6.x: Parser M3U, cache gzip, FFmpeg optimizado, watchdog,
+ v6.x: Parser M3U, cache gzip, FFmpeg optimizado, watchdog,
          transcode-vod via Python-pipe, VOD quality selector,
          descarga paralela adaptativa, latencia <2s live
 ─────────────────────────────────────────────────────────────
 🆕 v7.0 OPTIMIZACIONES:
-✅ fetch_with_retry() — 404/403 no matan el stream (retry 2s)
-✅ Pipe VOD con reconexión automática en fallo de red
-✅ Detección anticipada de primer segmento (playlist.m3u8 antes que .ts)
-✅ Stream reuse mejorado — actualiza last_access en cada .ts servido
-✅ Watchdog VOD — reinicia pipe si FFmpeg se cuelga en mitad del VOD
-✅ Limpieza de sesiones garantizada con try/finally
-✅ Respuesta de playlist ~40% más rápida (detección anticipada)
+ fetch_with_retry() — 404/403 no matan el stream (retry 2s)
+ Pipe VOD con reconexión automática en fallo de red
+ Detección anticipada de primer segmento (playlist.m3u8 antes que .ts)
+ Stream reuse mejorado — actualiza last_access en cada .ts servido
+ Watchdog VOD — reinicia pipe si FFmpeg se cuelga en mitad del VOD
+ Limpieza de sesiones garantizada con try/finally
+ Respuesta de playlist ~40% más rápida (detección anticipada)
 """
 
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -30,6 +30,15 @@ import zlib
 import time
 import sys
 import os
+import uuid
+
+# --- PISCINA DE CONEXIONES HTTP PERSISTENTES (Keep-Alive + Auto-Redirect) ---
+http_pool_opener = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(),
+    urllib.request.HTTPRedirectHandler(),
+    urllib.request.HTTPHandler(),
+    urllib.request.HTTPSHandler()
+)
 
 # Handle importing iptv_ai_core from core directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core'))
@@ -73,7 +82,7 @@ try:
     ai_handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
     ai_logger.addHandler(ai_handler)
     ai_logger.setLevel(logging.INFO)
-    ai_logger.info("🚀 SISTEMA IA RECONECTADO - Base Robusta Detectada")
+    ai_logger.info(" Neural Optimizer Ready - Base Robusta Detectada")
 except ImportError:
     HAS_AI = False
 # ----------------------
@@ -174,12 +183,12 @@ def get_vod_duration(url, base_url, timeout_s=20):
         if dur > 0:
             with duration_cache_lock:
                 duration_cache[url] = dur
-            print(f"   ⏱️ Duración detectada: {dur:.1f}s ({dur/3600:.2f}h)")
+            print(f"    Duración detectada: {dur:.1f}s ({dur/3600:.2f}h)")
 
         return dur
 
     except Exception as e:
-        print(f"   ⚠️ ffprobe duración: {e}")
+        print(f"    ffprobe duración: {e}")
         return 0
 
 
@@ -199,7 +208,7 @@ def get_vod_file_size(url, base_url):
             size = int(r.headers.get("Content-Length", 0))
             return size
     except Exception as e:
-        print(f"   ⚠️ file size: {e}")
+        print(f"    file size: {e}")
         return 0
 
 
@@ -219,7 +228,7 @@ def fetch_with_retry(
 ):
     """
     Descarga una URL con reintento automático.
-    🤖 IA AUTO-HEALING: Si falla tras los reintentos, busca un mirror funcional.
+     Auto-Healing Triggered: Si falla tras los reintentos, busca un mirror funcional.
     """
     if HAS_AI:
         try:
@@ -227,7 +236,7 @@ def fetch_with_retry(
             domain = throttle_detector._domain(url)
             current_spd = throttle_detector.expected_speeds.get(domain, 3000.0)
             cfg = ai_optimizer.predict_optimal_config(url, 1.0, latency=0, speed_kbps=current_spd, required_bitrate=3000.0)
-            # IA AUTO-HEALING: Usa directamente el delay sin dividir (hasta 3s)
+            # Auto-Healing Triggered: Usa directamente el delay sin dividir (hasta 3s)
             retry_delay_s = max(0.15, float(cfg.get("retry_delay", 0.5)))
             timeout_s = max(timeout_s, int(retry_delay_s * 5 + 5))
         except: pass
@@ -257,9 +266,9 @@ def fetch_with_retry(
             for k, v in headers.items():
                 req.add_header(k, v)
 
-            resp = urllib.request.urlopen(req, timeout=timeout_s)
+            resp = http_pool_opener.open(req, timeout=timeout_s)
 
-            # 🧠 IA: Registrar experiencia exitosa (en background para no bloquear el stream)
+            #  System: Registrar experiencia exitosa (en background para no bloquear el stream)
             if HAS_AI and channel_name and not range_header:  # solo en petición principal, no en seeks
                 try:
                     _t_elapsed = time.time() - (deadline - max_time_s)
@@ -294,7 +303,7 @@ def fetch_with_retry(
                 continue
             break
 
-    # 🤖 AUTO-HEALING: Agotado tiempo → buscar mirror si tenemos el nombre
+    #  AUTO-HEALING: Agotado tiempo → buscar mirror si tenemos el nombre
     if HAS_AI and channel_name and not is_mirror_retry:
         # Registrar fallo en la IA
         try: ai_optimizer.log_failure(url)
@@ -302,7 +311,7 @@ def fetch_with_retry(
         
         mirror_url = ai_optimizer.find_best_mirror(channel_name)
         if mirror_url:
-            print(f"🚀 IA: Espejo encontrado para '{channel_name}' → Re-intentando con nueva fuente...")
+            print(f" System: Espejo encontrado para '{channel_name}' → Re-intentando con nueva fuente...")
             return fetch_with_retry(
                 mirror_url,
                 extra_headers=extra_headers,
@@ -329,9 +338,9 @@ def ensure_cache_dir():
         if not os.path.exists(CACHE_INDEX_FILE):
             with open(CACHE_INDEX_FILE, "w", encoding="utf-8") as f:
                 json.dump([], f)
-            print("✅ Índice caché inicializado")
+            print(" Índice caché inicializado")
     except Exception as e:
-        print(f"❌ Error creando directorio caché: {e}")
+        print(f" Error creando directorio caché: {e}")
 
 
 def cache_gz_path(playlist_id):
@@ -356,7 +365,7 @@ def save_cache_gz(playlist_id, data):
             os.remove(tmp_path)
         raise e
     size_kb = os.path.getsize(path) / 1024
-    print(f"   💾 Guardado: {path} ({size_kb:.1f} KB comprimido)")
+    print(f"    Guardado: {path} ({size_kb:.1f} KB comprimido)")
 
 
 def load_cache_gz(playlist_id):
@@ -369,7 +378,7 @@ def load_cache_gz(playlist_id):
             with gzip.open(gz_path, "rt", encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError) as e:
-            print(f"   ⚠️ Caché corrupto ({playlist_id}), intentando fallback legacy...")
+            print(f"    Caché corrupto ({playlist_id}), intentando fallback legacy...")
             if os.path.exists(json_path):
                 try:
                     with open(json_path, "r", encoding="utf-8") as f:
@@ -382,7 +391,7 @@ def load_cache_gz(playlist_id):
             return None
     elif os.path.exists(json_path):
         # Migrar automáticamente a .gz
-        print(f"   🔄 Migrando caché legado a gzip: {playlist_id}")
+        print(f"    Migrando caché legado a gzip: {playlist_id}")
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         save_cache_gz(playlist_id, data)
@@ -397,7 +406,7 @@ def load_index():
             with open(CACHE_INDEX_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception as e:
-        print(f"⚠️ Error leyendo índice: {e}")
+        print(f" Error leyendo índice: {e}")
     return []
 
 
@@ -467,7 +476,7 @@ def download_m3u(url):
 
     t0 = time.time()
 
-    with urllib.request.urlopen(req, timeout=30) as response:
+    with http_pool_opener.open(req, timeout=30) as response:
         encoding = response.headers.get("Content-Encoding", "").lower()
         chunks = []
         total_bytes = 0
@@ -487,7 +496,7 @@ def download_m3u(url):
             if total_bytes % (5 * 1024 * 1024) < CHUNK_SIZE:
                 elapsed = _time.time() - t_start
                 speed = (total_bytes / 1024) / max(elapsed, 0.1)
-                print(f"   📥 Descargando: {total_bytes/1024/1024:.1f} MB @ {speed:.0f} KB/s")
+                print(f"    Descargando: {total_bytes/1024/1024:.1f} MB @ {speed:.0f} KB/s")
 
             if total_bytes > MAX_TOTAL_BYTES:
                 raise ValueError(f"M3U supera {MAX_TOTAL_BYTES//1024//1024}MB — abortando")
@@ -507,12 +516,12 @@ def download_m3u(url):
 
     speed_kbps = (compressed_size / 1024) / elapsed if elapsed > 0 else 0
     print(
-        f"✅ Descargado: {compressed_size:,} bytes en {elapsed:.1f}s ({speed_kbps:.0f} KB/s)"
+        f" Descargado: {compressed_size:,} bytes en {elapsed:.1f}s ({speed_kbps:.0f} KB/s)"
     )
     if encoding in ("gzip", "deflate"):
         ratio = (1 - compressed_size / final_size) * 100
         print(
-            f"   🗜️  Compresión {encoding}: {final_size/1024:.0f} KB → {compressed_size/1024:.0f} KB ({ratio:.0f}% menos)"
+            f"     Compresión {encoding}: {final_size/1024:.0f} KB → {compressed_size/1024:.0f} KB ({ratio:.0f}% menos)"
         )
 
     return text, compressed_size, elapsed
@@ -528,7 +537,7 @@ def refresh_one_playlist(playlist_id, url, entry_name=""):
     """
     global active_url
     name = entry_name or url[:40]
-    print(f"\n🔄 Actualizando playlist: {name}")
+    print(f"\n Actualizando playlist: {name}")
 
     # Marcar como EN PROGRESO antes de comenzar
     with refresh_status_lock:
@@ -544,7 +553,7 @@ def refresh_one_playlist(playlist_id, url, entry_name=""):
         t0 = time.time()
         channels = parse_m3u(text)
         groups = sorted(set(ch["group"] for ch in channels))
-        print(f"✅ Parseado: {len(channels):,} canales en {time.time()-t0:.1f}s")
+        print(f" Parseado: {len(channels):,} canales en {time.time()-t0:.1f}s")
 
         # --- Actualizar caché de memoria ---
         with m3u_cache_lock:
@@ -583,10 +592,10 @@ def refresh_one_playlist(playlist_id, url, entry_name=""):
                 "total": len(channels),
             }
 
-        print(f"✅ Playlist '{name}' actualizada: {len(channels):,} canales")
+        print(f" Playlist '{name}' actualizada: {len(channels):,} canales")
 
     except Exception as e:
-        print(f"❌ Error actualizando '{name}': {e}")
+        print(f" Error actualizando '{name}': {e}")
         
         # FIX: Actualizar timestamp aunque falle para que auto_refresh_loop
         # no dispare otro hilo hasta que pase el intervalo configurado
@@ -678,10 +687,10 @@ def detect_stream_info(url):
             data = json.loads(result.stdout.decode("utf-8", errors="ignore"))
             bitrate = int(data.get("format", {}).get("bit_rate", 0)) / 1000
             if bitrate > 0:
-                print(f"   📊 Bitrate detectado: {bitrate:.0f} kbps")
+                print(f"    Bitrate detectado: {bitrate:.0f} kbps")
                 return bitrate
     except Exception as e:
-        print(f"   ⚠️ Probe sin resultado: {e}")
+        print(f"    Probe sin resultado: {e}")
     return 2500  # Default: 2.5 Mbps
 
 
@@ -706,7 +715,7 @@ def cleanup_stream(stream_id):
     except Exception:
         pass
         
-    # 🧠 HLS Live AI Logging
+    #  HLS Live AI Logging
     try:
         if HAS_AI and "started" in info:
             elapsed = time.time() - info["started"]
@@ -724,17 +733,17 @@ def cleanup_stream(stream_id):
                 except Exception:
                     pass
                     
-                print(f"   🧠 IA ABR: Grabando memoria de stream HLS ({elapsed:.0f}s, {size_mb:.1f}MB, Éxito:{success})")
+                print(f"    ABR Optimizer: Grabando memoria de stream HLS ({elapsed:.0f}s, {size_mb:.1f}MB, Éxito:{success})")
                 threading.Thread(
                     target=ai_optimizer.log_experience, 
                     args=(info["url"], size_mb, speed_kbps, success, 0, None), 
                     daemon=True
                 ).start()
     except Exception as e:
-        print(f"   ⚠️ Error loggeando memoria HLS: {e}")
+        print(f"    Error loggeando memoria HLS: {e}")
 
     del active_streams[stream_id]
-    print(f"   🧹 Stream {stream_id} limpiado")
+    print(f"    Stream {stream_id} limpiado")
 
 
 
@@ -750,7 +759,7 @@ def cleanup_inactive_streams():
                 if current_time - info.get("last_access", current_time) > 600
             ]
             for sid in to_remove:
-                print(f"\n🧹 Limpiando stream inactivo: {sid}")
+                print(f"\n Limpiando stream inactivo: {sid}")
                 cleanup_stream(sid)
 
 
@@ -811,7 +820,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             
             # Obtener datos reales de SQLite y Config
             import sqlite3
-            conn = sqlite3.connect("C:/IPTV_Cache/iptv_permanent_memory.db")
+            conn = sqlite3.connect(os.path.join(CACHE_DIR, "iptv_permanent_memory.db"))
             # Bug Fix: COALESCE evita NULLs en filas antiguas que crashean el JS
             recent = conn.execute("""
                 SELECT COALESCE(size_mb, 0), COALESCE(actual_speed, 0),
@@ -894,6 +903,8 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             self.handle_cache_refresh_one()
         elif p == "/api/cache/refresh-status":
             self.handle_refresh_status()
+        elif p == "/api/cache/updates":
+            self.handle_cache_updates()
         elif p == "/api/auto-refresh/settings":
             self.handle_get_auto_refresh()
         elif p == "/api/speed-log":
@@ -942,7 +953,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     auto_refresh_cfg["interval_minutes"] = max(
                         5, int(body["interval_minutes"])
                     )
-            print(f"⚙️  Auto-refresh: {auto_refresh_cfg}")
+            print(f"⚙  Auto-refresh: {auto_refresh_cfg}")
             self.send_json_response(200, {"success": True, **auto_refresh_cfg})
         except Exception as e:
             self.send_json_response(500, {"error": str(e)})
@@ -982,6 +993,40 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             data = dict(refresh_status)
         self.send_json_response(200, data)
 
+    def handle_cache_updates(self):
+        """GET /api/cache/updates – SSE stream de actualizaciones de playlists"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        # Track qué playlists ya notificamos para no duplicar
+        notified = {}
+        try:
+            while True:
+                with refresh_status_lock:
+                    snapshot = dict(refresh_status)
+
+                for pid, info in snapshot.items():
+                    if info.get("status") != "success":
+                        continue
+                    ts = info.get("timestamp", 0)
+                    # Solo notificar si es reciente y no fue notificado ya con este timestamp
+                    if ts > notified.get(pid, 0):
+                        event_data = json.dumps({
+                            "playlist_id": pid,
+                            "total": info.get("total", 0),
+                            "name": info.get("name", pid),
+                        }, ensure_ascii=False)
+                        self.wfile.write(f"data: {event_data}\n\n".encode("utf-8"))
+                        self.wfile.flush()
+                        notified[pid] = ts
+
+                time.sleep(2)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass  # Cliente desconectó — salir silenciosamente
+
     def handle_speed_log(self):
         self.send_json_response(200, list(speed_log))
 
@@ -1000,11 +1045,11 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             data = load_cache_gz(playlist_id)
             if data:
                 self.send_json_response(200, data)
-                print(f"✅ Caché cargado: {playlist_id}")
+                print(f" Caché cargado: {playlist_id}")
             else:
                 self.send_json_response(404, {"error": "Playlist no encontrada"})
         except Exception as e:
-            print(f"❌ Error cargando caché: {e}")
+            print(f" Error cargando caché: {e}")
             self.send_json_response(500, {"error": str(e)})
 
     def handle_cache_save(self):
@@ -1021,7 +1066,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 return
 
             name = idx_entry.get("name", "unknown")
-            print(f"💾 Guardando en disco (gzip): {name}")
+            print(f" Guardando en disco (gzip): {name}")
 
             save_cache_gz(pid, cache_data)
 
@@ -1031,7 +1076,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             index.append(idx_entry)
             save_index(index)
 
-            print(f"✅ '{name}' guardado exitosamente")
+            print(f" '{name}' guardado exitosamente")
             self.send_json_response(200, {"success": True})
 
         except Exception as e:
@@ -1051,7 +1096,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             index = [e for e in index if e.get("id") != pid]
             save_index(index)
 
-            print(f"🗑️ Playlist eliminada: {pid}")
+            print(f" Playlist eliminada: {pid}")
             self.send_json_response(200, {"success": True})
         except Exception as e:
             self.send_json_response(500, {"error": str(e)})
@@ -1063,7 +1108,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 if os.path.isfile(fpath):
                     os.remove(fpath)
             save_index([])
-            print("🗑️ Caché en disco vaciado completamente")
+            print(" Caché en disco vaciado completamente")
             self.send_json_response(200, {"success": True})
         except Exception as e:
             self.send_json_response(500, {"error": str(e)})
@@ -1088,7 +1133,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 return
             url = urllib.parse.unquote(url)
 
-            print(f"\n🔍 Verificando lista: {url[:70]}...")
+            print(f"\n Verificando lista: {url[:70]}...")
 
             t0 = time.time()
 
@@ -1130,7 +1175,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     active = True
                     status = "ok"
                     count_sample = chunk.count("#EXTINF")
-                    message = "✅ Lista activa y válida"
+                    message = " Lista activa y válida"
                     detail = (
                         f"Servidor respondió en {latency_ms}ms. "
                         f"Contiene contenido M3U válido."
@@ -1142,19 +1187,19 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     )
                 elif "<html" in chunk.lower() or "<!doctype" in chunk.lower():
                     status = "invalid"
-                    message = "⚠️ Servidor responde pero devuelve HTML"
+                    message = " Servidor responde pero devuelve HTML"
                     detail = (
                         "Las credenciales pueden ser incorrectas o la URL no es de tipo m3u_plus. "
                         f"Respondió en {latency_ms}ms."
                     )
                 elif len(chunk.strip()) == 0:
                     status = "empty"
-                    message = "⚠️ Servidor respondió vacío"
+                    message = " Servidor respondió vacío"
                     detail = f"El servidor respondió (HTTP {http_code}) pero sin contenido en {latency_ms}ms."
                 else:
                     active = True
                     status = "ok_noheader"
-                    message = "✅ Lista accesible (sin cabecera estándar)"
+                    message = " Lista accesible (sin cabecera estándar)"
                     detail = (
                         f"Servidor respondió en {latency_ms}ms con contenido accesible."
                     )
@@ -1164,33 +1209,33 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 http_code = e.code
                 if e.code == 401:
                     status = "auth_error"
-                    message = "🔑 Credenciales incorrectas (401 Unauthorized)"
+                    message = " Credenciales incorrectas (401 Unauthorized)"
                     detail = "El servidor rechazó el usuario/contraseña."
                 elif e.code == 403:
                     status = "forbidden"
-                    message = "🔒 Acceso denegado (403 Forbidden)"
+                    message = " Acceso denegado (403 Forbidden)"
                     detail = "La cuenta puede haber expirado o el servidor bloqueó el acceso."
                 elif e.code == 404:
                     status = "not_found"
-                    message = "🔍 Lista no encontrada (404)"
+                    message = " Lista no encontrada (404)"
                     detail = (
                         "La URL no existe en el servidor. Verifica que sea correcta."
                     )
                 elif e.code == 504:
                     status = "timeout_server"
-                    message = "⏱️ Servidor saturado (504 Gateway Timeout)"
+                    message = " Servidor saturado (504 Gateway Timeout)"
                     detail = "El servidor recibió la petición pero no pudo responder a tiempo. Intenta más tarde."
                 elif e.code == 503:
                     status = "unavailable"
-                    message = "🔴 Servidor no disponible (503)"
+                    message = " Servidor no disponible (503)"
                     detail = "El servidor está temporalmente fuera de servicio."
                 elif e.code == 502:
                     status = "bad_gateway"
-                    message = "🔴 Error de gateway (502)"
+                    message = " Error de gateway (502)"
                     detail = "El servidor IPTV está teniendo problemas internos."
                 else:
                     status = "http_error"
-                    message = f"❌ Error HTTP {e.code}"
+                    message = f" Error HTTP {e.code}"
                     detail = str(e)
 
             except urllib.error.URLError as e:
@@ -1204,7 +1249,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     or "timeout" in reason.lower()
                 ):
                     status = "timeout"
-                    message = "⏱️ Sin respuesta (timeout 10s)"
+                    message = " Sin respuesta (timeout 10s)"
                     detail = (
                         "El servidor no responde. Parece estar caído o inaccesible."
                     )
@@ -1214,7 +1259,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     "WRONG_VERSION_NUMBER" in reason or "SSL" in reason.upper()
                 ) and url.startswith("https://"):
                     http_url = "http://" + url[8:]
-                    print(f"   ⚠️  SSL falló → reintentando con HTTP...")
+                    print(f"     SSL falló → reintentando con HTTP...")
                     try:
                         t1 = time.time()
                         with _open(http_url, None) as r2:
@@ -1223,18 +1268,18 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         if "#EXTINF" in chunk2 or "#EXTM3U" in chunk2:
                             active = True
                             status = "ok_http_fallback"
-                            message = "✅ Lista activa (usa HTTP, no HTTPS)"
+                            message = " Lista activa (usa HTTP, no HTTPS)"
                             detail = (
                                 f"SSL falló pero HTTP funcionó en {latency_ms}ms. "
                                 f"Cambia 'https://' por 'http://' en la URL."
                             )
                         else:
                             status = "ssl_invalid"
-                            message = "🔐 Error SSL y HTTP no devuelve M3U"
+                            message = " Error SSL y HTTP no devuelve M3U"
                             detail = "Cambia https:// por http:// e inténtalo de nuevo."
                     except Exception as e3:
                         status = "ssl_error"
-                        message = "🔐 Error SSL de conexión"
+                        message = " Error SSL de conexión"
                         detail = "Prueba cambiando 'https://' por 'http://' en la URL."
 
                 elif (
@@ -1243,7 +1288,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     or "denegó" in reason
                 ):
                     status = "refused"
-                    message = "🚫 Conexión rechazada"
+                    message = " Conexión rechazada"
                     detail = "El servidor rechazó la conexión. Puerto incorrecto o servidor caído."
 
                 elif (
@@ -1253,21 +1298,21 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     or "11004" in reason
                 ):
                     status = "dns_error"
-                    message = "❓ Servidor no encontrado (DNS)"
+                    message = " Servidor no encontrado (DNS)"
                     detail = (
                         "No se pudo resolver el nombre del servidor. Verifica la URL."
                     )
 
                 else:
                     status = "connection_error"
-                    message = "❌ Error de conexión"
+                    message = " Error de conexión"
                     detail = reason
 
             except (TimeoutError, OSError) as e:
                 # TimeoutError built-in (socket.timeout) a veces no va envuelto en URLError
                 latency_ms = int((time.time() - t0) * 1000)
                 status = "timeout"
-                message = "⏱️ Sin respuesta (timeout 10s)"
+                message = " Sin respuesta (timeout 10s)"
                 detail = "El servidor no responde. Parece estar caído o inaccesible."
 
             except Exception as e:
@@ -1276,7 +1321,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
 
                 traceback.print_exc()
                 status = "error"
-                message = "❌ Error inesperado"
+                message = " Error inesperado"
                 detail = str(e)
 
             result = {
@@ -1288,7 +1333,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 "http_code": http_code,
                 "url": url,
             }
-            print(f"   {'✅' if active else '❌'} {status}: {message}")
+            print(f"   {'' if active else ''} {status}: {message}")
             self.send_json_response(200, result)
 
         except Exception as e:
@@ -1317,7 +1362,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 channels = cached["channels"]
                 groups = cached["groups"]
                 active_url = url
-                print(f"✅ Caché memoria: {len(channels):,} canales")
+                print(f" Caché memoria: {len(channels):,} canales")
                 self.send_json_response(
                     200, {"status": "cached", "total": len(channels), "groups": groups}
                 )
@@ -1325,7 +1370,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
 
             # ── Descargar M3U nuevo ──
             print(f"\n{'='*60}")
-            print(f"📥 Cargando M3U: {url[:60]}...")
+            print(f" Cargando M3U: {url[:60]}...")
             print(f"{'='*60}")
 
             text, compressed, elapsed = download_m3u(url)
@@ -1333,8 +1378,8 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             t0 = time.time()
             channels = parse_m3u(text)
             groups = sorted(set(ch["group"] for ch in channels))
-            print(f"✅ Parseado: {len(channels):,} canales en {time.time()-t0:.1f}s")
-            print(f"📂 Grupos: {len(groups)}")
+            print(f" Parseado: {len(channels):,} canales en {time.time()-t0:.1f}s")
+            print(f" Grupos: {len(groups)}")
 
             with m3u_cache_lock:
                 m3u_cache[url] = {
@@ -1350,7 +1395,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             )
 
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f" Error: {e}")
             self.send_json_response(500, {"error": str(e)})
 
     # ============================================================
@@ -1467,10 +1512,10 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             url = urllib.parse.unquote(url)
 
             print(f"\n{'='*60}")
-            print(f"🎬 Proxy VOD: {url[:60]}...")
+            print(f" Proxy VOD: {url[:60]}...")
 
             ext = url.split("?")[0].split(".")[-1].lower()
-            print(f"   📄 Extensión: .{ext}")
+            print(f"    Extensión: .{ext}")
 
             # Verificar Content-Type
             try:
@@ -1488,11 +1533,11 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     accept_ranges = r.headers.get("Accept-Ranges", "none")
                     content_length = r.headers.get("Content-Length", "0")
 
-                print(f"   🔍 Content-Type: {content_type}")
-                print(f"   📏 Content-Length: {content_length} bytes")
-                print(f"   🎯 Accept-Ranges: {accept_ranges}")
+                print(f"    Content-Type: {content_type}")
+                print(f"    Content-Length: {content_length} bytes")
+                print(f"    Accept-Ranges: {accept_ranges}")
             except Exception as e:
-                print(f"   ⚠️ HEAD request falló: {e}")
+                print(f"    HEAD request falló: {e}")
                 content_type = ""
                 accept_ranges = "none"
 
@@ -1502,12 +1547,12 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 # Tamaño total conocido por HEAD (puede ser 0 si server no lo dio)
                 known_size = int(content_length) if content_length.isdigit() else 0
                 if use_parallel:
-                    print(f"   🚀 Modo paralelo")
+                    print(f"    Modo paralelo")
                     print(f"{'='*60}\n")
                     self.proxy_parallel_download(url)
                 else:
                     print(
-                        f"   ✅ Proxy directo → {ext.upper()} | size={known_size:,} bytes"
+                        f"    Proxy directo → {ext.upper()} | size={known_size:,} bytes"
                     )
                     print(f"{'='*60}\n")
                     self.proxy_range_request(url, known_size=known_size)
@@ -1539,11 +1584,11 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     timeout_s=60,
                 )
             except urllib.error.HTTPError as e:
-                print(f"   ❌ HTTP {e.code}: {e.reason} (tras retry)")
+                print(f"    HTTP {e.code}: {e.reason} (tras retry)")
                 self.send_error(e.code, e.reason)
                 return
             except Exception as e:
-                print(f"   ❌ Error proxy: {e}")
+                print(f"    Error proxy: {e}")
                 self.send_error(502, str(e))
                 return
 
@@ -1565,7 +1610,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     part_len = end_b - start_b + 1
                     content_range = f"bytes {start_b}-{end_b}/{known_size}"
                     content_length = str(part_len)
-                    print(f"   📏 Inyectando Content-Range: {content_range}")
+                    print(f"    Inyectando Content-Range: {content_range}")
                 except Exception:
                     pass
 
@@ -1590,13 +1635,13 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     self.wfile.write(chunk)
                     bytes_sent += len(chunk)
                     if bytes_sent % (10 * 1024 * 1024) == 0:
-                        print(f"   📤 {bytes_sent/1024/1024:.1f} MB enviados")
+                        print(f"    {bytes_sent/1024/1024:.1f} MB enviados")
                 except (
                     BrokenPipeError,
                     ConnectionResetError,
                     ConnectionAbortedError,
                 ) as e:
-                    print(f"   ⚠️ Cliente desconectó: {type(e).__name__}")
+                    print(f"    Cliente desconectó: {type(e).__name__}")
                     break
 
             if bytes_sent > 0:
@@ -1604,9 +1649,9 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 log_request_speed(url, bytes_sent, elapsed)
                 speed_kbps = (bytes_sent / 1024) / max(elapsed, 0.01)
                 speed_mbps = speed_kbps / 1024
-                print(f"   ✅ {bytes_sent/1024/1024:.1f} MB @ {speed_mbps:.2f} MB/s")
+                print(f"    {bytes_sent/1024/1024:.1f} MB @ {speed_mbps:.2f} MB/s")
 
-                # 🧠 IA: Registrar velocidad y detectar throttle
+                #  System: Registrar velocidad y detectar throttle
                 if HAS_AI:
                     try:
                         from iptv_ai_core import throttle_detector
@@ -1614,14 +1659,14 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         analysis = throttle_detector.analyze(url, speed_kbps)
                         if analysis["throttled"] and analysis["pieces"] > 1:
                             domain = url.split('/')[2] if '/' in url else url
-                            print(f"   🚨 THROTTLE en {domain}: {analysis['strategy']}")
-                            print(f"   💡 Próxima petición: activar {analysis['pieces']} piezas paralelas")
+                            print(f"    THROTTLE en {domain}: {analysis['strategy']}")
+                            print(f"    Próxima petición: activar {analysis['pieces']} piezas paralelas")
                     except Exception:
                         pass
 
 
         except Exception as e:
-            print(f"   ❌ Error proxy_range: {e}")
+            print(f"    Error proxy_range: {e}")
             try:
                 self.send_error(500, str(e))
             except:
@@ -1631,7 +1676,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
         """Descarga adaptativa con múltiples conexiones paralelas"""
         try:
             print(f"\n{'='*60}")
-            print(f"🚀 DESCARGA PARALELA ADAPTATIVA")
+            print(f" DESCARGA PARALELA ADAPTATIVA")
 
             parsed = urllib.parse.urlparse(url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
@@ -1648,13 +1693,13 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 accept_ranges = r.headers.get("Accept-Ranges", "none")
 
             if accept_ranges == "none" or content_length == 0:
-                print(f"   ⚠️ Sin Range Requests → fallback a proxy normal")
+                print(f"    Sin Range Requests → fallback a proxy normal")
                 self.proxy_range_request(url)
                 return
 
             size_mb = content_length / 1024 / 1024
             
-            # 🤖 IA OPTIMIZER V2: Medición de latencia y predicción profunda
+            #  IA OPTIMIZER V2: Medición de latencia y predicción profunda
             latency_ms = 0
             if HAS_AI:
                 # Medir latencia rápida al servidor
@@ -1666,7 +1711,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 
                 ai_config = ai_optimizer.predict_optimal_config(url, size_mb, latency_ms)
                 num_conn = ai_config["num_conn"]
-                print(f"   🧠 IA V2 Sugirió: {num_conn} conns | Prefetch: {ai_config['prefetch_count']} | Latencia: {latency_ms:.0f}ms")
+                print(f"    IA v7.2 Sugirió: {num_conn} conns | Prefetch: {ai_config['prefetch_count']} | Latencia: {latency_ms:.0f}ms")
             else:
                 # Fallback tradicional
                 if size_mb < 50: num_conn = 4
@@ -1674,7 +1719,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 elif size_mb < 500: num_conn = 12
                 else: num_conn = 16
 
-            print(f"   📏 Tamaño: {size_mb:.1f} MB → {num_conn} conexiones")
+            print(f"    Tamaño: {size_mb:.1f} MB → {num_conn} conexiones")
 
             # Protección contra num_conn muy bajo (extreme_starvation → num_conn=2)
             # Evitar chunk_size=0 o fragmentos inválidos con archivos pequeños
@@ -1684,126 +1729,62 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             if chunk_size < 1024 and num_conn > 1:
                 num_conn = max(1, content_length // 1024)
                 chunk_size = content_length // num_conn
-                print(f"   ⚠️ Ajuste protectivo: archivo pequeño → {num_conn} conexión(es)")
-            part_buffers = [bytearray() for _ in range(num_conn)]
-            errors = []
-            speeds = []
+                print(f"    Ajuste protectivo: archivo pequeño → {num_conn} conexión(es)")
+            
+            print(f"    Tamaño: {size_mb:.1f} MB → {num_conn} conexiones (AIOHTTP STREAM)")
 
-            def download_part(idx, start, end, buf):
-                try:
-                    # 🕵️ Anti-detección: cada pieza tiene identidad única
-                    headers = {}
-                    if HAS_AI:
-                        try:
-                            from iptv_ai_core import throttle_detector
-                            headers = throttle_detector.get_disguised_headers(idx, url)
-                            jitter  = throttle_detector.get_jitter_delay(idx)
-                            time.sleep(jitter)  # Escalonar inicio para no parecer burst
-                        except Exception:
-                            pass
-
-                    r2 = urllib.request.Request(url)
-                    # Si no hay headers de anti-detección, usar los por defecto
-                    ua  = headers.get("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    ref = headers.get("Referer", f"{base_url}/")
-                    r2.add_header("User-Agent",      ua)
-                    r2.add_header("Referer",         ref)
-                    r2.add_header("Accept",          headers.get("Accept", "*/*"))
-                    r2.add_header("Accept-Language", headers.get("Accept-Language", "en-US,en;q=0.9"))
-                    r2.add_header("Cache-Control",   headers.get("Cache-Control", "no-cache"))
-                    r2.add_header("Range",           f"bytes={start}-{end}")
-
-                    t0 = time.time()
-                    with urllib.request.urlopen(r2, timeout=120) as resp:
-                        downloaded = 0
-                        while True:
-                            c = resp.read(64 * 1024)
-                            if not c:
-                                break
-                            buf.extend(c)
-                            downloaded += len(c)
-                    elapsed = time.time() - t0
-                    spd = (downloaded / 1024) / elapsed if elapsed > 0 else 0
-                    speeds.append(spd)
-                    print(
-                        f"   ✅ Pieza {idx+1}/{num_conn}: {downloaded/1024/1024:.1f} MB @ {spd:.0f} KB/s [{ua[:30]}...]"
-                    )
-                except Exception as e:
-                    errors.append(f"Pieza {idx+1}: {e}")
-
-
-            ranges = [
-                (
-                    i,
-                    i * chunk_size,
-                    (
-                        (i + 1) * chunk_size - 1
-                        if i < num_conn - 1
-                        else content_length - 1
-                    ),
-                )
-                for i in range(num_conn)
-            ]
-            threads = []
-            t0 = time.time()
-            for idx, start, end in ranges:
-                t = threading.Thread(
-                    target=download_part,
-                    args=(idx, start, end, part_buffers[idx]),
-                    daemon=True,
-                )
-                t.start()
-                threads.append(t)
-            for t in threads:
-                t.join(timeout=180)
-
-            if errors:
-                print(f"   ⚠️ Errores en partes: {errors}")
-                self.proxy_range_request(url)
-                return
-
-            total_elapsed = time.time() - t0
-            avg_speed = sum(speeds) / len(speeds) if speeds else 0
-            print(
-                f"   🏁 {size_mb:.1f} MB descargados en {total_elapsed:.1f}s (avg {avg_speed:.0f} KB/s)"
-            )
-
-            # Enviar al cliente en orden
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(content_length))
             self.send_header("Accept-Ranges", "bytes")
             self.end_headers()
 
-            bytes_sent = 0
-            for buf in part_buffers:
-                try:
-                    self.wfile.write(bytes(buf))
-                    bytes_sent += len(buf)
-                except (BrokenPipeError, ConnectionResetError):
-                    print(f"   ⚠️ Cliente desconectó")
-                    break
-
-            log_request_speed(url, bytes_sent, total_elapsed)
-            
-            # 📊 Reportar velocidad total al detector de throttle
-            if HAS_AI and avg_speed > 0:
+            ai_headers_func = None
+            ai_jitter_func = None
+            if HAS_AI:
                 try:
                     from iptv_ai_core import throttle_detector
-                    total_speed_kbps = (bytes_sent / 1024) / max(total_elapsed, 0.1)
-                    throttle_detector.record_speed(url, total_speed_kbps)
-                    analysis = throttle_detector.analyze(url, total_speed_kbps)
-                    if analysis["throttled"]:
-                        print(f"   ⚠️ {analysis['strategy']}")
-                    else:
-                        print(f"   📶 Velocidad: {analysis['strategy']}")
+                    ai_headers_func = throttle_detector.get_disguised_headers
+                    ai_jitter_func = throttle_detector.get_jitter_delay
                 except Exception:
                     pass
+
+            import time
+            t0 = time.time()
+            import async_vod_downloader
+
+            # Delega a asyncio. Escribe progresivamente al socket y bloquea hasta terminar.
+            try:
+                async_vod_downloader.download_and_stream(
+                    url, num_conn, content_length, self.wfile,
+                    ai_headers_func=ai_headers_func, ai_jitter_func=ai_jitter_func
+                )
+            except Exception as e:
+                print(f"    Cliente desconectó o error en stream: {e}")
+
+            total_elapsed = time.time() - t0
+            avg_speed_kbps = (content_length / 1024) / max(total_elapsed, 0.1)
+            print(f"    {size_mb:.1f} MB transmitidos en {total_elapsed:.1f}s (avg {avg_speed_kbps:.0f} KB/s)")
+
+            try:
+                log_request_speed(url, content_length, total_elapsed)
+            except:
+                pass
             
-            # 🤖 IA V2: Registrar experiencia
             if HAS_AI:
-                ai_optimizer.log_experience(url, size_mb, avg_speed, success=True, latency=latency_ms)
+                try:
+                    from iptv_ai_core import throttle_detector
+                    throttle_detector.record_speed(url, avg_speed_kbps)
+                    analysis = throttle_detector.analyze(url, avg_speed_kbps)
+                    if analysis["throttled"]:
+                        print(f"    {analysis['strategy']}")
+                    else:
+                        print(f"    Velocidad: {analysis['strategy']}")
+                except Exception:
+                    pass
+                ai_optimizer.log_experience(url, size_mb, avg_speed_kbps, success=True, latency=latency_ms)
                 if ai_optimizer.experience_count % 20 == 0:
+                    import threading
                     threading.Thread(target=ai_optimizer.evolve_brain, daemon=True).start()
             
             print(f"{'='*60}\n")
@@ -1817,6 +1798,27 @@ class IPTVHandler(SimpleHTTPRequestHandler):
 
     # ============================================================
     # HLS: LIVE STREAMS
+    @staticmethod
+    def _detect_video_codec(url):
+        """Detecta el codec de video original del stream usando ffprobe (timeout 1.5s)"""
+        try:
+            cmd = [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name",
+                "-of", "default=noprint_wrappers=1:singlekey=1",
+                "-timeout", "1500000",
+                "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                url
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            codec = res.stdout.strip().lower()
+            if codec:
+                return codec
+        except Exception:
+            pass
+        return "unknown"
+
     # ============================================================
     # ──────────────────────────────────────────────────────────────────────────
     # HELPER: construir comando FFmpeg (reutilizable para inicio y reinicio)
@@ -1845,7 +1847,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
         └─────────────────────────────────────┴───────────┴───────────┘
 
         Con hls_time=1 y HLS.js liveSyncDurationCount=2:
-          latencia total = 1s × 2 segmentos = ~2s desde live edge ✓
+          latencia total = 1s × 2 segmentos = ~2s desde live edge 
         """
         parsed = urllib.parse.urlparse(url)
         base_url = f"{parsed.scheme}://{parsed.netloc}"
@@ -1907,8 +1909,25 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             ]
             audio_br = f"{abr}k"
         else:
-            # AUTO / copy: sin transcodificación → latencia prácticamente cero
-            video_args = ["-c:v", "copy", "-bsf:v", "h264_mp4toannexb"]
+            # AUTO / copy: verificar si la fuente usa un codec incompatible con HTML5 (hevc, mpeg2video, vc1, mpeg4)
+            v_codec = IPTVHandler._detect_video_codec(url)
+            if v_codec in ("hevc", "h265", "mpeg2video", "vc1", "mpeg4"):
+                print(f" ℹ Codec de video '{v_codec}' detectado (incompatible con HTML5 sin transcodificar) -> Aplicando H.264 superfast zerolatency")
+                x264params = "rc-lookahead=0:bframes=0:scenecut=0:no-mbtree=1:sync-lookahead=0:ref=1"
+                gop = int(30 * hls_time)
+                video_args = [
+                    "-c:v", "libx264",
+                    "-preset", "superfast",
+                    "-tune", "zerolatency",
+                    "-x264-params", x264params,
+                    "-profile:v", "baseline",
+                    "-pix_fmt", "yuv420p",
+                    "-g", str(gop),
+                    "-keyint_min", str(gop),
+                    "-flags", "+cgop"
+                ]
+            else:
+                video_args = ["-c:v", "copy", "-bsf:v", "h264_mp4toannexb"]
             audio_br = "128k"
 
         return (
@@ -1944,6 +1963,11 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 "20000000",
                 "-i",
                 url,
+                # ── Mapeo explícito de streams (evita descartar video o incluir datos SCTE-35/teletexto)
+                "-map",
+                "0:v:0?",
+                "-map",
+                "0:a:0?",
             ]
             + video_args
             + [
@@ -2017,7 +2041,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
         STALL_THRESHOLD = 25  # segundos sin nuevo .ts → FFmpeg colgado
         CHECK_INTERVAL = 1
 
-        print(f"   👁️ Watchdog iniciado: {stream_id}")
+        print(f"    Watchdog iniciado: {stream_id}")
         last_bola_segs = 0
 
         while True:
@@ -2032,8 +2056,8 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             if not os.path.exists(info.get("temp_dir", "")):
                 break
 
-            # Dejar de vigilar si el cliente lleva >10min sin acceder
-            if time.time() - info.get("last_access", 0) > 620:
+            # Dejar de vigilar si el cliente lleva >5min sin acceder
+            if time.time() - info.get("last_access", 0) > 310:
                 break
 
             segs_servidos = len(info.get("segs_servidos_set", set()))
@@ -2059,19 +2083,19 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     pending_segs = sorted(_glob.glob(f"{pending['dir']}/seg_*.ts"))
                     
                     if pending["proceso"].poll() is not None and len(pending_segs) < 4:
-                        print(f"   ⚠️ BOLA pending falló (FFmpeg murió), manteniendo calidad actual")
+                        print(f"    BOLA pending falló (FFmpeg murió), manteniendo calidad actual")
                         _limpiar_pending(stream_id, pending)
                         continue
                         
                     if time.time() - pending["started"] > 20:
-                        print(f"   ⚠️ BOLA pending timeout (20s), manteniendo calidad actual")
+                        print(f"    BOLA pending timeout (20s), manteniendo calidad actual")
                         _limpiar_pending(stream_id, pending)
                         continue
                         
                     current_segs = sorted(_glob.glob(f"{info['temp_dir']}/seg_*.ts"))
                     buffer_ms = (len(current_segs) - segs_servidos) * (info.get("hls_time", 2) * 1000)
                     if buffer_ms < 2000:
-                        print(f"   ⚠️ BOLA abortado (buffer cayó a {buffer_ms}ms), manteniendo calidad actual")
+                        print(f"    BOLA abortado (buffer cayó a {buffer_ms}ms), manteniendo calidad actual")
                         _limpiar_pending(stream_id, pending)
                         continue
 
@@ -2089,7 +2113,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                                 active_streams[stream_id]["quality"] = pending["calidad"]["resolution"]
                                 del active_streams[stream_id]["pending"]
                                 
-                        print(f"   🧠 BOLA SEAMLESS | {info.get('quality', 'old')} → {pending['calidad']['resolution']} | Buffer: {buffer_ms}ms | Stream: {stream_id}")
+                        print(f"    BOLA SEAMLESS | {info.get('quality', 'old')} → {pending['calidad']['resolution']} | Buffer: {buffer_ms}ms | Stream: {stream_id}")
                         
                         # Time sleep preventivo antes de matar al viejo
                         time.sleep(2)
@@ -2124,7 +2148,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                                 if buffer_ms > buffer_req:
                                     start_n = int(os.path.basename(current_segs[-1]).replace("seg_", "").replace(".ts", "")) + 1 if current_segs else 0
                                     
-                                    new_dir = f"C:/IPTV_Cache/iptv_{stream_id}_pending_{str(uuid.uuid4())[:4]}"
+                                    new_dir = os.path.join(tempfile.gettempdir(), f"iptv_{stream_id}_pending_{str(uuid.uuid4())[:4]}")
                                     os.makedirs(new_dir, exist_ok=True)
                                     
                                     # Al pasar start_n, FFmpeg nativamente nombrará seg_XX y generará el m3u8 correctamente
@@ -2164,14 +2188,14 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         
                 nonlocal restarts
                 if restarts >= MAX_RESTARTS:
-                    print(f"   ❌ Watchdog {stream_id}: máx reintentos ({MAX_RESTARTS}) agotados")
+                    print(f"    Watchdog {stream_id}: máx reintentos ({MAX_RESTARTS}) agotados")
                     return False
 
                 # Encontrar el último segmento para continuar desde ahí
                 segs = sorted(_glob.glob(f"{info['temp_dir']}/seg_*.ts"))
                 start_n = int(os.path.basename(segs[-1]).replace("seg_", "").replace(".ts", "")) + 1 if segs else 0
 
-                print(f"   🔄 Watchdog: {reason} → reiniciando desde seg #{start_n}...")
+                print(f"    Watchdog: {reason} → reiniciando desde seg #{start_n}...")
 
                 old = info.get("process")
                 if old and old.poll() is None:
@@ -2198,10 +2222,10 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                             active_streams[stream_id]["restarted"] = restarts + 1
                             active_streams[stream_id]["last_restart"] = time.time()
                     restarts += 1
-                    print(f"   ✅ FFmpeg reiniciado (intento #{restarts})")
+                    print(f"    FFmpeg reiniciado (intento #{restarts})")
                     return True
                 except Exception as e:
-                    print(f"   ❌ Error al reiniciar: {e}")
+                    print(f"    Error al reiniciar: {e}")
                     return False
 
             if process.poll() is not None:
@@ -2222,7 +2246,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                                 cleanup_stream(stream_id)
                         break
 
-        print(f"   👁️ Watchdog terminado: {stream_id}")
+        print(f"    Watchdog terminado: {stream_id}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # HLS ABR: Interceptor Inteligente de Variante Maestra
@@ -2249,14 +2273,14 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 # Si el server ignora Range, read() intentará descargar un stream en vivo infinito.
                 content = r.read(16384).decode('utf-8', errors='ignore')
         except Exception as e:
-            print(f"   ⚠️ ABR Head Error: {e}")
+            print(f"    ABR Head Error: {e}")
             return url, False
             
         if "#EXT-X-STREAM-INF" not in content:
             return url, False  # No es playlist maestro
 
         # Parsear variantes (BANDWIDTH y RESOLUTION opcional)
-        print(f"   🧠 IA ABR: Detectado Playlist Maestro HLS")
+        print(f"    ABR Optimizer: Detectado Playlist Maestro HLS")
         variantes = []
         base_url = url.rsplit("/", 1)[0]
         
@@ -2307,12 +2331,12 @@ class IPTVHandler(SimpleHTTPRequestHandler):
         if quality == "auto":
             if is_throttled:
                 v = variantes[0] # La MENOR calidad para salvar el stream
-                print(f"   🚨 ABR AI: Red asfixiada detectada. Forzando menor variante: {v['bw']/1000:.0f}Ckbps")
+                print(f"    ABR AI: Red asfixiada detectada. Forzando menor variante: {v['bw']/1000:.0f}Ckbps")
                 app_metrics["abr_interventions"] += 1
                 return v["url"], True # Copy
             else:
                 v = variantes[-1] # La MAYOR calidad
-                print(f"   📶 ABR AI: Red veloz. Forzando mayor variante: {v['bw']/1000:.0f} kbps")
+                print(f"    ABR AI: Red veloz. Forzando mayor variante: {v['bw']/1000:.0f} kbps")
                 app_metrics["cpu_saved_events"] += 1
                 return v["url"], True # Copy
                 
@@ -2342,7 +2366,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     if coincidencias:
                         v = min(coincidencias, key=lambda x: x["h"])
                         exact = (v["h"] == target_h)
-                        print(f"   🎯 ABR: Encontrada variante {v['h']}p para {quality}")
+                        print(f"    ABR: Encontrada variante {v['h']}p para {quality}")
                         return v["url"], exact
                     else:
                         v = max(cercanas, key=lambda x: x["h"])
@@ -2379,7 +2403,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             stream_id = hashlib.md5(f"{url}|{quality}".encode()).hexdigest()[:12]
 
             print(f"\n{'='*60}")
-            print(f"🎬 HLS Request: {url[:50]}...")
+            print(f" HLS Request: {url[:50]}...")
             print(f"   ID: {stream_id}  |  Calidad: {quality.upper()}")
 
             import glob
@@ -2398,11 +2422,11 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         if "segs_servidos_set" not in info:
                             info["segs_servidos_set"] = {os.path.basename(f) for f in glob.glob(f"{info['temp_dir']}/seg_*.ts")}
                         
-                        print(f"   ♻️ Reutilizando stream activo")
+                        print(f"    Reutilizando stream activo")
                         self.send_json_response(200, {"stream_id": stream_id, "playlist_url": f"/hls/{stream_id}/playlist.m3u8", "status": "ready", "quality": quality})
                         return
                     elif info.get("status") != "init":
-                        print(f"   💀 Proceso murió o inválido, reiniciando...")
+                        print(f"    Proceso murió o inválido, reiniciando...")
                         cleanup_stream(stream_id)
 
                 # Registro provisional para bloquear otros hilos mientras urllib/ABR resuelven
@@ -2410,21 +2434,17 @@ class IPTVHandler(SimpleHTTPRequestHandler):
 
             temp_dir = tempfile.mkdtemp(prefix=f"iptv_{stream_id}_")
             try:
-                # Detectar bitrate sin bloquear (max 3s)
-                br_result = [2500]
-                def _probe(): br_result[0] = detect_stream_info(url)
-                pt = threading.Thread(target=_probe, daemon=True)
-                pt.start()
-                pt.join(timeout=3)
-                brkbps = br_result[0]
+                brkbps = 2500
+                optimal_url, is_exact_match = url, False
                 
-                # 🧠 IA ABR: Interceptar URL y seleccionar variante maestra
-                optimal_url, is_exact_match = self.select_optimal_hls_variant(url, quality)
+                if ".m3u8" in url.lower() or "m3u8" in url.lower():
+                    optimal_url, is_exact_match = self.select_optimal_hls_variant(url, quality)
+                
                 if optimal_url != url:
-                    print(f"   ✨ ABR AI: URL original reescrita por sub-variante óptima")
+                    print(f"    ABR AI: URL original reescrita por sub-variante óptima")
                     url = optimal_url
                     if is_exact_match and transcode_video:
-                        print(f"   ⚡ ABR AI: La variante es el MATCH PERFECTO. Se anula reescalado (-c:v copy)")
+                        print(f"    ABR AI: La variante es el MATCH PERFECTO. Se anula reescalado (-c:v copy)")
                         transcode_video = False
                         quality_profile = None
 
@@ -2435,11 +2455,12 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 ai_config_data = ai_optimizer.predict_optimal_config(url, size_est, latency=0, speed_kbps=current_spd, required_bitrate=brkbps if brkbps else 2500) if HAS_AI else None
                 
                 ffmpeg_cmd = self._build_ffmpeg_cmd(url, temp_dir, transcode_video, quality_profile, hls_time, 0, ai_config_data)
-                print(f"   🚀 Iniciando FFmpeg...")
+                print(f"    Iniciando FFmpeg...")
                 process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
 
                 available_qualities = []
-                if HAS_AI:
+                # FIX: Evitar el segundo probe (urlopen) en streams MPEG-TS (Xtream Codes)
+                if HAS_AI and (".m3u8" in url.lower() or "m3u8" in url.lower()):
                     try:
                         req_abr = urllib.request.Request(url)
                         req_abr.add_header("User-Agent", "Mozilla/5.0")
@@ -2478,7 +2499,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         "segs_servidos_set": set()
                     }
             except Exception as e_init:
-                print(f"   ❌ Fallo crítico en inicialización: {e_init}")
+                print(f"    Fallo crítico en inicialización: {e_init}")
                 with streams_lock:
                     if stream_id in active_streams and active_streams[stream_id].get("status") == "init":
                         del active_streams[stream_id]
@@ -2495,7 +2516,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             while waited < max_wait:
                 if process.poll() is not None:
                     stderr = process.stderr.read().decode("utf-8", errors="ignore")
-                    print(f"   ❌ FFmpeg:\n{stderr[:400]}")
+                    print(f"    FFmpeg:\n{stderr[:400]}")
                     cleanup_stream(stream_id)
                     
                     if "403" in stderr or "Forbidden" in stderr:
@@ -2522,7 +2543,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                             pl_content = f.read()
 
                         if ".ts" in pl_content and glob.glob(f"{temp_dir}/seg_*.ts"):
-                            print(f"   ✅ Stream listo ({waited:.1f}s)")
+                            print(f"    Stream listo ({waited:.1f}s)")
                             break
                     except:
                         pass
@@ -2533,7 +2554,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 self.send_json_response(500, {"error": "Timeout generando HLS"})
                 return
 
-            # 🐕 Lanzar watchdog daemon por este stream
+            #  Lanzar watchdog daemon por este stream
             threading.Thread(
                 target=self._watchdog, args=(stream_id,), daemon=True
             ).start()
@@ -2616,7 +2637,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
 
         except Exception as e:
-            print(f"❌ Error HLS: {e}")
+            print(f" Error HLS: {e}")
             try:
                 self.send_response(500)
                 self.end_headers()
@@ -2660,7 +2681,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     with streams_lock:
                         if old_sid in active_streams:
                             print(
-                                f"   🛑 Cancelando transcode previo {old_sid[:8]} (seek nuevo)"
+                                f"    Cancelando transcode previo {old_sid[:8]} (seek nuevo)"
                             )
                             cleanup_stream(old_sid)
                     # Cancelar también el pipe thread
@@ -2689,7 +2710,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             ).hexdigest()[:12]
 
             print(f"\n{'='*60}")
-            print(f"🎬 Transcode-VOD v7.1: {url[:60]}...")
+            print(f" Transcode-VOD v7.1: {url[:60]}...")
             print(
                 f"   ID: {stream_id} | Calidad: {quality.upper()} | Start: {start_time:.1f}s"
             )
@@ -2702,7 +2723,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         info["last_access"] = time.time()
                         pl = os.path.join(info["temp_dir"], "playlist.m3u8")
                         if os.path.exists(pl):
-                            print(f"   ♻️ Reutilizando stream VOD")
+                            print(f"    Reutilizando stream VOD")
                             cached_dur = duration_cache.get(url, 0)
                             self.send_json_response(
                                 200,
@@ -2720,21 +2741,21 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         cleanup_stream(stream_id)
 
                 temp_dir = tempfile.mkdtemp(prefix=f"iptv_{stream_id}_")
-                print(f"   📁 {temp_dir}")
+                print(f"    {temp_dir}")
 
             # ── Lanzar ffprobe en background para obtener duración total ──────
             # No bloqueamos la respuesta, se cachea para futuros seeks
             def _probe_duration():
                 dur = get_vod_duration(url, base_url)
                 if dur > 0:
-                    print(f"   📐 Duración VOD cacheada: {dur:.1f}s")
+                    print(f"    Duración VOD cacheada: {dur:.1f}s")
 
             threading.Thread(target=_probe_duration, daemon=True).start()
 
             # ── Perfil de calidad / modo audio-fix ───────────────────────────────
             if transcode_vid:
                 w, h, vbr, abr = profile
-                print(f"   🔽 Transcodificando → {quality} ({w}×{h}, {vbr}k)")
+                print(f"    Transcodificando → {quality} ({w}×{h}, {vbr}k)")
                 x264p = "rc-lookahead=0:bframes=0:scenecut=0:no-mbtree=1:sync-lookahead=0:ref=1"
                 hls_t = 2
                 vid_args = [
@@ -2765,7 +2786,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 ]
                 audio_br = f"{abr}k"
             else:
-                print(f"   🔊 Audio fix: video copy + AAC 192k")
+                print(f"    Audio fix: video copy + AAC 192k")
                 hls_t = 4
                 vid_args = ["-c:v", "copy"]
                 audio_br = "192k"
@@ -2786,16 +2807,17 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 seek_args = ["-ss", str(int(start_time))]
                 ts_offset_args = ["-output_ts_offset", str(int(start_time))]
                 print(
-                    f"   📍 Seek a {start_time:.0f}s → usando -ss {int(start_time)} (robusto)"
+                    f"    Seek a {start_time:.0f}s → usando -ss {int(start_time)} (robusto)"
                 )
 
             ffmpeg_cmd = (
                 ["ffmpeg", "-hide_banner", "-loglevel", "warning"]
                 + seek_args
-                + ["-i", "pipe:0", "-probesize", "500000", "-analyzeduration", "250000"]
+                + ["-i", "pipe:0", "-probesize", "500000", "-analyzeduration", "250000", "-map", "0:v:0?", "-map", "0:a:0?"]
                 + vid_args
                 + ts_offset_args
                 + [
+
                     "-c:a",
                     "aac",
                     "-b:a",
@@ -2837,7 +2859,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                 ]
             )
 
-            print(f"   🚀 Iniciando FFmpeg (stdin pipe)...")
+            print(f"    Iniciando FFmpeg (stdin pipe)...")
             process = subprocess.Popen(
                 ffmpeg_cmd,
                 stdin=subprocess.PIPE,
@@ -2891,7 +2913,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                     try:
                         if retry_count > 0:
                             print(
-                                f"   🔄 Pipe reconectando (intento {retry_count}/{MAX_RETRIES})"
+                                f"    Pipe reconectando (intento {retry_count}/{MAX_RETRIES})"
                             )
                             time.sleep(1.0 * retry_count)
 
@@ -2923,17 +2945,17 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                                 except (BrokenPipeError, OSError):
                                     return
 
-                        print(f"   ✅ Pipe: {bytes_piped/1024/1024:.1f} MB → FFmpeg")
+                        print(f"    Pipe: {bytes_piped/1024/1024:.1f} MB → FFmpeg")
                         return
 
                     except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
                         retry_count += 1
                         print(
-                            f"   ⚠️ Pipe error ({e}), retry {retry_count}/{MAX_RETRIES}"
+                            f"    Pipe error ({e}), retry {retry_count}/{MAX_RETRIES}"
                         )
                     except Exception as e:
                         if not cancel_event.is_set():
-                            print(f"   ⚠️ Pipe inesperado: {e}")
+                            print(f"    Pipe inesperado: {e}")
                         break
 
                 try:
@@ -2951,7 +2973,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
             waited = 0
             print(f"   ⏳ Esperando playlist (max 30s)...")
 
-            while waited < 30:
+            while waited < 60:
                 time.sleep(0.4)
                 waited += 0.4
                 if process.poll() is not None:
@@ -2974,7 +2996,7 @@ class IPTVHandler(SimpleHTTPRequestHandler):
                         with open(pl_path, "r", encoding="utf-8") as pf:
                             pl_content = pf.read()
                         if "seg_" in pl_content:
-                            print(f"   ✅ Playlist lista ({waited:.1f}s)")
+                            print(f"    Playlist lista ({waited:.1f}s)")
                             break
                     except:
                         pass
@@ -3093,16 +3115,16 @@ def run_server(port=5000):
             )
         except Exception:
             print(f"\n{'='*60}")
-            print(f"❌ ERROR: {tool} NO encontrado")
+            print(f" ERROR: {tool} NO encontrado")
             print("Descárgalo de: https://ffmpeg.org/download.html")
             print(f"{'='*60}\n")
             return
 
-    print("✅ FFmpeg y ffprobe OK")
+    print(" FFmpeg y ffprobe OK")
     
-    # 🤖 Estado de la IA
+    #  Estado de la IA
     if HAS_AI:
-        print(f"🧠 Red Neuronal IPTV: {'Cargada' if ai_optimizer.model else 'Inicializada (Aprendiendo...)'}")
+        print(f" Red Neuronal IPTV: {'Cargada' if ai_optimizer.model else 'Inicializada (Aprendiendo...)'}")
 
     ensure_cache_dir()
 
@@ -3116,49 +3138,49 @@ def run_server(port=5000):
     for target in (cleanup_inactive_streams, auto_refresh_loop):
         threading.Thread(target=target, daemon=True).start()
 
-    # 📦 IA: Auto-Actualización Diaria al arrancar
+    #  System: Auto-Actualización Diaria al arrancar
     threading.Thread(target=startup_playlist_check, daemon=True).start()
 
-    # 🤖 IA: Scheduler Autónomo Diario (se despierta a las 04:00 AM)
+    #  System: Scheduler Autónomo Diario (se despierta a las 04:00 AM)
     if HAS_AI:
         try:
             from ai_scheduler import start_scheduler_thread
             start_scheduler_thread()
-            print("🤖 Scheduler IA: Activo (ciclo diario a las 04:00 AM)")
+            print(" Scheduler System: Activo (ciclo diario a las 04:00 AM)")
         except Exception as e:
-            print(f"⚠️ Scheduler IA no disponible: {e}")
+            print(f" Scheduler IA no disponible: {e}")
 
     print(
         f"""
 ╔══════════════════════════════════════════════════════════════╗
-║    🎬  SERVIDOR IPTV v7.0  –  AI Neural Optimized 🧠 🎬      ║
+║      SERVIDOR IPTV v7.2  –  AI Neural Optimized              ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
-║  ✓  http://localhost:{port}/iptv-player.html                   ║
+║    http://localhost:{port}/iptv-player.html                    ║
 ║                                                              ║
-║  🤖 Neural Engine: {'Activo' if HAS_AI else 'Desactivado'}                        ║
-║  ⚡ Parser M3U por iteración (RAM reducida)                 ║
-║  🗜️  Descarga M3U con gzip (menos datos en red)             ║
-║  💾 Caché en disco comprimido (.json.gz)                    ║
-║  🔄 fetch_with_retry — 404/403 transitorios tolerados       ║
-║  🔌 Pipe VOD con reconexión automática (3 reintentos)       ║
-║  📡 Stream sharing — múltiples clientes 1 proceso FFmpeg    ║
-║  ⏩ Detección anticipada — playlist lista ~40% antes        ║
-║  🐕 Watchdog reinicia streams live caídos                   ║
+║   Neural Engine: {'Activo' if HAS_AI else 'Desactivado'}                                      ║
+║   Parser M3U por iteración (RAM reducida)                    ║
+║   Descarga M3U con gzip (menos datos en red)                 ║
+║   Caché en disco comprimido (.json.gz)                       ║
+║   fetch_with_retry — 404/403 transitorios tolerados          ║
+║   Pipe VOD con reconexión automática (3 reintentos)          ║
+║   Stream sharing — múltiples clientes 1 proceso FFmpeg       ║
+║   Detección anticipada — playlist lista ~40% antes           ║
+║   Watchdog reinicia streams live caídos                      ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 """
     )
 
     try:
-        print("⚡ Servidor listo...\n")
+        print(" Servidor listo...\n")
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n\n🧹 Deteniendo streams...")
+        print("\n\n Deteniendo streams...")
         with streams_lock:
             for sid in list(active_streams.keys()):
                 cleanup_stream(sid)
-        print("✅ Servidor detenido")
+        print(" Servidor detenido")
 
 
 # ============================================================
@@ -3166,7 +3188,7 @@ def run_server(port=5000):
 # ============================================================
 def startup_playlist_check():
     """Actualiza automáticamente las listas si tienen más de 24 horas"""
-    print("\n📦 IA: Verificando caducidad de listas M3U...")
+    print("\n System: Verificando caducidad de listas M3U...")
     try:
         index = load_index()
         current_time = time.time()
@@ -3177,11 +3199,11 @@ def startup_playlist_check():
             
             # 86400 segundos = 24 horas
             if current_time - last_update > 86400:
-                print(f"   🔄 Lista '{entry.get('name')}' caducada → Actualizando...")
+                print(f"    Lista '{entry.get('name')}' caducada → Actualizando...")
                 threading.Thread(target=refresh_one_playlist, args=(pid, url, entry.get("name")), daemon=True).start()
-        print("✅ IA: Verificación completada.")
+        print(" System: Verificación completada.")
     except Exception as e:
-        print(f"⚠️ Error en auto-actualización: {e}")
+        print(f" Error en auto-actualización: {e}")
 
 
 if __name__ == "__main__":

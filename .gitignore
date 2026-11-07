@@ -8,3 +8,10 @@ logs/
 config/Certificados/*.txt
 config/Certificados/*.pdf
 config/Certificados/*.PDF
+
+# Mapeo y Protección Local
+CLAUDE.md
+*.zip
+.planning/
+listas*.txt
+
